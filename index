@@ -77,6 +77,7 @@
       // デフォルト受注Noを 250969 に設定
       const CONFIG = { initialOrderNo: gasDataEl?.dataset.orderNo || "250969", initialSummaryCode: gasDataEl?.dataset.summaryCode || "", userRole: gasDataEl?.dataset.userRole || "sales", userTitle: gasDataEl?.dataset.userTitle || "", userName: gasDataEl?.dataset.userName || "担当者" };
       const getTodayString = () => new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/');
+      const getDateTimeString = () => { const n = new Date(); return `${n.getFullYear()}/${String(n.getMonth()+1).padStart(2,'0')}/${String(n.getDate()).padStart(2,'0')} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`; };
 
       const CustomConfirm = ({ isOpen, message, onConfirm, onCancel }) => {
         if (!isOpen) return null;
@@ -212,6 +213,8 @@
         const [shippingRowCount, setShippingRowCount] = useState(3);
         const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null });
         const [errors, setErrors] = useState({});
+        const [staffEmails, setStaffEmails] = useState([]);
+        const [sendingEmailIdx, setSendingEmailIdx] = useState(null);
         
         // 技術課依頼書のUI状態管理
         const [techReqEnabled, setTechReqEnabled] = useState(!!header.internalMemo);
@@ -241,6 +244,8 @@
         const grandTotalCost = useMemo(() => {
           return items.reduce((s, i) => s + (Number(i.costAmount) || 0), 0) + (Number(header.totalCost) || 0);
         }, [items, header.totalCost]);
+
+        useEffect(() => { if (typeof google !== 'undefined' && google.script) google.script.run.withSuccessHandler(setStaffEmails).getStaffEmails(); }, []);
 
         const validate = () => {
             const newErrors = {};
@@ -331,6 +336,18 @@
         const addExtensionRow = () => { if (isLocked) return; const newRow = { id: generateId(), count: '延長', billingDate: '', amount: 0, costReference: '', slipNo: '', closingDate: '', checkStatus: '', rowOrderNo: '', note: '' }; recalcTotals(items, [...schedule, newRow]); };
         const updateRemark = (idx, key, val) => { if (isLocked) return; const newRemarks = [...remarks]; newRemarks[idx] = { ...newRemarks[idx], [key]: val }; onChange({ ...data, remarks: newRemarks }); };
         const deleteRemark = (idx) => { if (isLocked) return; const newRemarks = [...remarks]; newRemarks.splice(idx, 1); onChange({ ...data, remarks: newRemarks }); };
+        const handleRemarkEmail = (idx) => {
+          const rmk = remarks[idx];
+          if (rmk.mailSent === '済') return;
+          setConfirmState({ isOpen: true, message: `メールを送信してよろしいですか？\n\n受注No: ${header.orderNo}\n備考: ${rmk.content || '(内容なし)'}`, onConfirm: () => {
+            setConfirmState({ isOpen: false });
+            setSendingEmailIdx(idx);
+            const ccList = rmk.additionalCC ? rmk.additionalCC.split(',').filter(Boolean) : [];
+            if (typeof google !== 'undefined' && google.script) {
+              google.script.run.withSuccessHandler((res) => { setSendingEmailIdx(null); if (res.success) { const newRemarks = [...remarks]; newRemarks[idx] = { ...newRemarks[idx], mailSent: '済' }; onChange({ ...data, remarks: newRemarks }); } else { alert('メール送信エラー: ' + (res.message || '不明なエラー')); } }).withFailureHandler((err) => { setSendingEmailIdx(null); alert('エラー: ' + err); }).sendRemarkEmail({ orderNo: header.orderNo, remarkId: rmk.id, remarkContent: rmk.content, remarkDate: rmk.date, ccEmails: ccList, userName: CONFIG.userName });
+            }
+          }, onCancel: () => setConfirmState({ isOpen: false }) });
+        };
 
         const handleApproveAction = (stampType, stampLabel) => {
           const approverName = (CONFIG.userName && CONFIG.userName !== '担当者') ? CONFIG.userName : stampLabel;
@@ -681,9 +698,17 @@
                 )}
                 <div className="mt-4">
                     <div className="border border-black p-3">
-                        <div className="text-xs font-bold border-b border-black mb-2 flex justify-between items-center bg-label px-2 py-1"><span>備考 / 履歴</span><button onClick={() => { if(!isLocked) onChange({...data, remarks: [...remarks, { id: generateId(), category: 'その他', content: '', date: new Date().toISOString().split('T')[0].replace(/-/g, '/'), status: '', mailSent: '', additionalCC: '' }]})}} disabled={isLocked} className="text-blue-600 flex items-center text-[10px] border border-blue-200 px-1 bg-white rounded"><Plus className="w-3 h-3 mr-1" /> 追加</button></div>
-                        {remarks.length > 0 && <div className="grid grid-cols-[60px_1fr_68px_54px_54px_88px_18px] gap-1 text-[9px] font-bold text-gray-500 bg-gray-50 rounded px-1 py-0.5 mb-1"><div>カテゴリ</div><div>備考</div><div>日時</div><div>状況</div><div>メール</div><div>追加CC</div><div></div></div>}
-                        <div className="overflow-y-auto max-h-40 space-y-1">{remarks.map((rmk, idx) => <div key={rmk.id} className="grid grid-cols-[60px_1fr_68px_54px_54px_88px_18px] gap-1 text-xs border-b border-gray-100 pb-1 items-center"><select value={rmk.category || 'その他'} onChange={e => updateRemark(idx, 'category', e.target.value)} disabled={isLocked} className="text-[10px] bg-gray-100 rounded border border-gray-200 outline-none w-full py-0.5 cursor-pointer"><option value="請求">請求</option><option value="出荷">出荷</option><option value="その他">その他</option></select><input className="w-full bg-transparent outline-none" value={rmk.content || ''} onChange={e => updateRemark(idx, 'content', e.target.value)} disabled={isLocked} /><span className="text-gray-400 font-mono text-[9px] text-center leading-tight">{rmk.date}</span><input className="w-full bg-transparent outline-none text-[10px] border-b border-gray-200" value={rmk.status || ''} onChange={e => updateRemark(idx, 'status', e.target.value)} disabled={isLocked} placeholder="状況" /><input className="w-full bg-transparent outline-none text-[10px] border-b border-gray-200" value={rmk.mailSent || ''} onChange={e => updateRemark(idx, 'mailSent', e.target.value)} disabled={isLocked} placeholder="済/日付" /><input className="w-full bg-transparent outline-none text-[10px] border-b border-gray-200" value={rmk.additionalCC || ''} onChange={e => updateRemark(idx, 'additionalCC', e.target.value)} disabled={isLocked} placeholder="CCメール" /><button onClick={() => deleteRemark(idx)} disabled={isLocked} className="text-gray-300 hover:text-red-500 flex items-center justify-center"><X className="w-3 h-3" /></button></div>)}</div>
+                        <div className="text-xs font-bold border-b border-black mb-2 flex justify-between items-center bg-label px-2 py-1"><span>備考 / 履歴</span><button onClick={() => { if(!isLocked) onChange({...data, remarks: [...remarks, { id: generateId(), category: 'その他', content: '', date: getDateTimeString(), status: '', mailSent: '', additionalCC: '' }]})}} disabled={isLocked} className="text-blue-600 flex items-center text-[10px] border border-blue-200 px-1 bg-white rounded"><Plus className="w-3 h-3 mr-1" /> 追加</button></div>
+                        {remarks.length > 0 && <div className="grid grid-cols-[60px_1fr_82px_54px_78px_90px_18px] gap-1 text-[9px] font-bold text-gray-500 bg-gray-50 rounded px-1 py-0.5 mb-1"><div>カテゴリ</div><div>備考</div><div>日時</div><div>状況</div><div>メール</div><div>CC</div><div></div></div>}
+                        <div className="overflow-y-auto max-h-40 space-y-1">{remarks.map((rmk, idx) => <div key={rmk.id} className="grid grid-cols-[60px_1fr_82px_54px_78px_90px_18px] gap-1 text-xs border-b border-gray-100 pb-1 items-center">
+                          <select value={rmk.category || 'その他'} onChange={e => updateRemark(idx, 'category', e.target.value)} disabled={isLocked} className="text-[10px] bg-gray-100 rounded border border-gray-200 outline-none w-full py-0.5 cursor-pointer"><option value="請求">請求</option><option value="出荷">出荷</option><option value="その他">その他</option></select>
+                          <input className="w-full bg-transparent outline-none" value={rmk.content || ''} onChange={e => updateRemark(idx, 'content', e.target.value)} disabled={isLocked} />
+                          <span className="text-gray-400 font-mono text-[9px] text-center leading-tight">{rmk.date}</span>
+                          <input className="w-full bg-transparent outline-none text-[10px] border-b border-gray-200" value={rmk.status || ''} onChange={e => updateRemark(idx, 'status', e.target.value)} disabled={isLocked} placeholder="状況" />
+                          <div className="flex items-center justify-center">{sendingEmailIdx === idx ? <span className="text-[10px] text-gray-400 animate-pulse">送信中...</span> : rmk.mailSent === '済' ? <span className="px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded text-[10px] border border-gray-200 w-full text-center block">済</span> : <button onClick={() => handleRemarkEmail(idx)} disabled={isLocked} className="px-1 py-0.5 bg-blue-50 text-blue-600 border border-blue-200 rounded text-[10px] hover:bg-blue-100 w-full whitespace-nowrap">メール送信</button>}</div>
+                          <div className="flex flex-wrap gap-0.5 items-center min-h-[20px]">{rmk.additionalCC && rmk.additionalCC.split(',').filter(Boolean).map((email, eIdx) => <span key={eIdx} className="inline-flex items-center text-[8px] bg-blue-100 text-blue-700 rounded px-0.5 gap-0.5 leading-tight">{staffEmails.find(s => s.email === email)?.name || email.split('@')[0]}{rmk.mailSent !== '済' && !isLocked && <button onClick={() => { const ccs = rmk.additionalCC.split(',').filter(Boolean); ccs.splice(eIdx, 1); updateRemark(idx, 'additionalCC', ccs.join(',')); }} className="hover:text-red-500 leading-none">×</button>}</span>)}{rmk.mailSent !== '済' && !isLocked && staffEmails.length > 0 && <select value="" onChange={e => { if(!e.target.value) return; const cur = rmk.additionalCC ? rmk.additionalCC.split(',').filter(Boolean) : []; if(!cur.includes(e.target.value)) updateRemark(idx, 'additionalCC', [...cur, e.target.value].join(',')); }} className="text-[10px] text-blue-500 bg-transparent cursor-pointer outline-none"><option value="">CC+</option>{staffEmails.map(s => <option key={s.code} value={s.email}>{s.name}</option>)}</select>}</div>
+                          <button onClick={() => deleteRemark(idx)} disabled={isLocked} className="text-gray-300 hover:text-red-500 flex items-center justify-center"><X className="w-3 h-3" /></button>
+                        </div>)}</div>
                     </div>
                 </div>
               </div>

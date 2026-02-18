@@ -721,6 +721,92 @@ function mapScheduleData(row) { return { id: row['請求ID'], count: row['回数
 function mapRemarkData(row) { return { id: row['備考No'], category: row['カテゴリ'], content: row['備考'], date: formatDate(row['日時']), status: row['状況'] || '', mailSent: row['メール送付'] || '', additionalCC: row['追加CC'] || '' }; }
 function formatDate(val) { if (!val) return ""; if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy/MM/dd"); return String(val); }
 
+function getStaffEmails() {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.STAFF);
+    if (!sheet) return [];
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const codeIdx = headers.indexOf('担当者コード');
+    const nameIdx = headers.indexOf('担当者名');
+    const emailIdx = headers.indexOf('メールアドレス');
+    if (emailIdx === -1) return [];
+    const result = [];
+    for (let i = 1; i < data.length; i++) {
+      const email = String(data[i][emailIdx] || '').trim();
+      if (email) result.push({ code: String(data[i][codeIdx] || '').trim(), name: String(data[i][nameIdx] || '').trim(), email });
+    }
+    return result;
+  } catch (e) { return []; }
+}
+
+function sendRemarkEmail(params) {
+  try {
+    const { orderNo, remarkId, remarkContent, remarkDate, ccEmails, userName } = params;
+
+    // 受注データから担当者コードを取得
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const headerSheet = ss.getSheetByName(SHEETS.HEADER);
+    const headerData = headerSheet.getDataRange().getValues();
+    const hRow = headerData[0].map(h => String(h).trim());
+    const orderNoIdx = hRow.indexOf('受注No');
+    const staffCodeIdx = hRow.indexOf('担当者コード');
+    let targetStaffCode = '';
+    for (let i = 1; i < headerData.length; i++) {
+      if (cleanId(headerData[i][orderNoIdx]) === String(orderNo)) {
+        targetStaffCode = String(headerData[i][staffCodeIdx] || '').trim();
+        break;
+      }
+    }
+    if (!targetStaffCode) return { success: false, message: '担当者コードが見つかりません' };
+
+    // 担当者マスタからメールアドレスを取得
+    const staffSheet = ss.getSheetByName(SHEETS.STAFF);
+    const staffData = staffSheet.getDataRange().getValues();
+    const sHeaders = staffData[0].map(h => String(h).trim());
+    const sCodeIdx = sHeaders.indexOf('担当者コード');
+    const sEmailIdx = sHeaders.indexOf('メールアドレス');
+    if (sEmailIdx === -1) return { success: false, message: '担当者マスタにメールアドレス列がありません' };
+    let toEmail = '';
+    for (let i = 1; i < staffData.length; i++) {
+      if (cleanId(staffData[i][sCodeIdx]) === cleanId(targetStaffCode)) {
+        toEmail = String(staffData[i][sEmailIdx] || '').trim();
+        break;
+      }
+    }
+    if (!toEmail) return { success: false, message: '送信先メールアドレスが見つかりません' };
+
+    // メール送信
+    const subject = '【要確認】受注備考コメント';
+    const body = `受注No：${orderNo}にコメントがありましたので\nご確認をお願いいたします。\n\n備考No\n${remarkId}\n\n備考\n${remarkContent || ''}\n\n日時\n${remarkDate || ''}\n\nよろしくお願いいたします。`;
+    const mailOptions = {};
+    if (ccEmails && ccEmails.length > 0) mailOptions.cc = ccEmails.join(',');
+    GmailApp.sendEmail(toEmail, subject, body, mailOptions);
+
+    // 受注備考履歴に記録
+    const histSheet = ss.getSheetByName('受注備考履歴');
+    if (histSheet) {
+      const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm');
+      const hHeaders = histSheet.getRange(1, 1, 1, histSheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+      const newRow = hHeaders.map(h => {
+        if (h === '受注備考ID') return remarkId;
+        if (h === '処理担当者') return userName;
+        if (h === '処理内容') return 'メール送付';
+        if (h === '受注No') return orderNo;
+        if (h === '日時') return now;
+        return '';
+      });
+      histSheet.appendRow(newRow);
+    }
+
+    // 受注備考シートのメール送付列を「済」に更新
+    updateOrAddRow(ss, SHEETS.REMARKS, '備考No', remarkId, { 'メール送付': '済' });
+
+    return { success: true };
+  } catch (e) { return { success: false, message: e.toString() }; }
+}
+
 /**
  * ウォームアップ用関数
  * GASのコールドスタートを防ぐため、時間主導型トリガーで5分ごとに実行してください。
