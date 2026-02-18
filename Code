@@ -22,15 +22,13 @@ const SHEETS = {
 };
 
 function doGet(e) {
-  try { DriveApp.getFiles(); } catch (e) {} 
   var template = HtmlService.createTemplateFromFile('index');
-  // デモ用ロジックのデフォルト値を維持
   template.initialOrderNo = e.parameter.orderNo || "250969";
-  template.initialSummaryCode = e.parameter.summaryCode || ""; 
-  
+  template.initialSummaryCode = e.parameter.summaryCode || "";
+
   var paramUserName = e.parameter.userName || "";
   var staffInfo = getStaffInfo(paramUserName);
-  
+
   template.userRole = (staffInfo.role === "管理者" || staffInfo.role === "admin") ? "admin" : "sales";
   template.userTitle = staffInfo.title || "";
   template.userName = staffInfo.name || paramUserName || "担当者";
@@ -43,6 +41,15 @@ function doGet(e) {
 
 function getStaffInfo(staffCode) {
   if (!staffCode) return { role: "", title: "", name: "" };
+
+  // キャッシュから取得（担当者マスタはめったに変わらないため10分保持）
+  const cache = CacheService.getScriptCache();
+  const cacheKey = "staff_" + cleanId(staffCode);
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) {}
+  }
+
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.STAFF);
@@ -53,15 +60,17 @@ function getStaffInfo(staffCode) {
     const nameIdx = headers.indexOf("担当者名");
     const roleIdx = headers.indexOf("権限");
     const titleIdx = headers.indexOf("役職");
-    
+
     const targetCode = cleanId(staffCode);
     for (let i = 1; i < data.length; i++) {
       if (cleanId(data[i][codeIdx]) === targetCode) {
-        return {
+        const result = {
           role: roleIdx !== -1 ? String(data[i][roleIdx]).trim() : "",
           title: titleIdx !== -1 ? String(data[i][titleIdx]).trim() : "",
           name: nameIdx !== -1 ? String(data[i][nameIdx]).trim() : ""
         };
+        cache.put(cacheKey, JSON.stringify(result), 600); // 10分キャッシュ
+        return result;
       }
     }
   } catch (e) {}
@@ -604,3 +613,15 @@ function mapItemData(row) {
 function mapScheduleData(row) { return { id: row['請求ID'], count: row['回数'], billingDate: formatDate(row['請求売上日']), amount: row['請求金額'], costReference: row['原価金額'], slipNo: row['伝票No'], closingDate: formatDate(row['締め日']), checkStatus: row['チェック状況'], rowOrderNo: row['行受注No'], note: row['備考'] }; }
 function mapRemarkData(row) { return { id: row['備考No'], category: row['カテゴリ'], content: row['備考'], date: formatDate(row['日時']) }; }
 function formatDate(val) { if (!val) return ""; if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy/MM/dd"); return String(val); }
+
+/**
+ * ウォームアップ用関数
+ * GASのコールドスタートを防ぐため、時間主導型トリガーで5分ごとに実行してください。
+ * 設定方法: GASエディタ → 時計アイコン(トリガー) → 追加 → warmUp → 時間主導型 → 分タイマー → 5分ごと
+ */
+function warmUp() {
+  // スプレッドシートへの軽量アクセスでランタイムを維持する
+  try {
+    SpreadsheetApp.openById(SPREADSHEET_ID).getName();
+  } catch (e) {}
+}
