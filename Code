@@ -1,0 +1,606 @@
+/**
+ * @NotOnlyCurrentDoc
+ */
+
+/**
+ * ■設定エリア
+ */
+const SPREADSHEET_ID = "1L2DgOm3gfEZMwoe2TDjzBJuq5cHB2SlBlwg6vifg5IE";
+const TEMPLATE_SS_ID = "1pyePh1YXZdVqJqPbvjKjkN28I8DrY-5nMAjt3MGQE0E"; 
+const DESTINATION_FOLDER_ID = "1-k5u4OCIw31Huwqco0MYkH6ZHYR9_g3G"; 
+const APPSHEET_FOLDER_NAME = "受注兼発送依頼書_ファイル保存場所";
+
+const SHEETS = {
+  HEADER: "受注データ",
+  ITEMS: "受注明細",
+  SCHEDULE: "請求スケジュール",
+  REMARKS: "受注備考",
+  STAFF: "担当者マスタ",
+  CUSTOMER: "得意先マスタ",
+  HISTORY: "出荷伝票履歴",
+  PRODUCT_MASTER: "商品マスタ"
+};
+
+function doGet(e) {
+  try { DriveApp.getFiles(); } catch (e) {} 
+  var template = HtmlService.createTemplateFromFile('index');
+  // デモ用ロジックのデフォルト値を維持
+  template.initialOrderNo = e.parameter.orderNo || "250969";
+  template.initialSummaryCode = e.parameter.summaryCode || ""; 
+  
+  var paramUserName = e.parameter.userName || "";
+  var staffInfo = getStaffInfo(paramUserName);
+  
+  template.userRole = (staffInfo.role === "管理者" || staffInfo.role === "admin") ? "admin" : "sales";
+  template.userTitle = staffInfo.title || "";
+  template.userName = staffInfo.name || paramUserName || "担当者";
+
+  return template.evaluate()
+    .setTitle('受注兼発送依頼書')
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function getStaffInfo(staffCode) {
+  if (!staffCode) return { role: "", title: "", name: "" };
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.STAFF);
+    if (!sheet) return { role: "", title: "", name: "" };
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const codeIdx = headers.indexOf("担当者コード");
+    const nameIdx = headers.indexOf("担当者名");
+    const roleIdx = headers.indexOf("権限");
+    const titleIdx = headers.indexOf("役職");
+    
+    const targetCode = cleanId(staffCode);
+    for (let i = 1; i < data.length; i++) {
+      if (cleanId(data[i][codeIdx]) === targetCode) {
+        return {
+          role: roleIdx !== -1 ? String(data[i][roleIdx]).trim() : "",
+          title: titleIdx !== -1 ? String(data[i][titleIdx]).trim() : "",
+          name: nameIdx !== -1 ? String(data[i][nameIdx]).trim() : ""
+        };
+      }
+    }
+  } catch (e) {}
+  return { role: "", title: "", name: "" };
+}
+
+// 商品マスタ検索API
+function searchProducts(query) {
+  if (!query) return [];
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName(SHEETS.PRODUCT_MASTER);
+    if (!sheet) return [];
+    
+    // 全データ取得してメモリ上でフィルタ（データ量が多い場合はQuery等検討だが、簡易実装）
+    const values = sheet.getDataRange().getValues();
+    if (values.length < 2) return [];
+
+    // 列インデックス (A=0, B=1, G=6, Q=16, R=17)
+    const COL_CODE = 0;
+    const COL_NAME = 1;
+    const COL_UNIT = 6;
+    const COL_STD_PRICE = 16;
+    const COL_COST_PRICE = 17;
+
+    const results = [];
+    const q = String(query).toLowerCase();
+
+    // 1行目はヘッダなのでスキップ
+    for (let i = 1; i < values.length; i++) {
+      const row = values[i];
+      const code = String(row[COL_CODE] || "").toLowerCase();
+      const name = String(row[COL_NAME] || "").toLowerCase();
+
+      // 部分一致検索 (コード or 名前)
+      if (code.includes(q) || name.includes(q)) {
+        results.push({
+          code: row[COL_CODE],
+          name: row[COL_NAME],
+          unit: row[COL_UNIT],
+          standardPrice: row[COL_STD_PRICE],
+          costPrice: row[COL_COST_PRICE]
+        });
+        // 候補が多すぎると重くなるので20件で打ち切り
+        if (results.length >= 20) break;
+      }
+    }
+    return results;
+  } catch (e) {
+    return [];
+  }
+}
+
+function convertCollectionDate(code) {
+  if (!code || String(code).length < 3) return "";
+  const sCode = String(code);
+  const month = parseInt(sCode.substring(0, 1));
+  const day = sCode.substring(1);
+  const dayDisplay = (day === "99" || day === "31") ? "末日" : parseInt(day) + "日";
+  return month + "ヶ月後の" + dayDisplay;
+}
+
+function cleanId(id) {
+  if (!id) return "";
+  return String(id).trim().replace(/^["']+|["']+$/g, '');
+}
+
+function generateOrderSheet(data) {
+  if (!data) return { success: false, message: "データがありません" };
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName(SHEETS.HEADER);
+  if (!sheet) return { success: false, message: "シートなし" };
+
+  const orderNo = cleanId(data.header.orderNo);
+  const allData = sheet.getDataRange().getValues();
+  const headers = allData[0].map(h => String(h).trim());
+  const orderNoIdx = headers.indexOf("受注No");
+  const flagColIdx = headers.indexOf("受注兼フラグ");
+  const fileColIdx = headers.indexOf("受注兼ファイル"); 
+
+  let targetRowIndex = -1;
+  for (let i = 1; i < allData.length; i++) { if (cleanId(allData[i][orderNoIdx]) === orderNo) { targetRowIndex = i + 1; break; } }
+  if (targetRowIndex === -1) return { success: false, message: "データなし: " + orderNo };
+
+  let currentVer = parseInt(sheet.getRange(targetRowIndex, flagColIdx + 1).getValue());
+  if (isNaN(currentVer)) currentVer = 0;
+  const newVer = currentVer + 1;
+  sheet.getRange(targetRowIndex, flagColIdx + 1).setValue(newVer);
+
+  const shipDate = data.header.shipDate1 ? data.header.shipDate1.replace(/\//g, '') : "未定";
+  const fileName = `受注券_${orderNo}_${data.header.customerName}_${shipDate}.xlsx`; 
+
+  try {
+    const templateFile = DriveApp.getFileById(TEMPLATE_SS_ID);
+    const destinationFolder = DriveApp.getFolderById(DESTINATION_FOLDER_ID);
+    const tempFile = templateFile.makeCopy(fileName, destinationFolder);
+    const tempSs = SpreadsheetApp.open(tempFile);
+    const tempSheet = tempSs.getSheets()[0];
+
+    const h = data.header;
+    const replacements = { "{受注No}": h.orderNo, "{見積書No}": h.estimateNo, "{受注日}": h.date, "{得意先名}": h.customerName, "{支店名}": h.branchName, "{郵便番号}": h.customerZipCode, "{得意先住所}": h.customerAddress, "{会社TEL}": h.customerTel, "{会社FAX}": h.customerFax, "{得意先備考}": h.customerNote, "{直送先名}": h.shipName, "{直送先住所}": h.shipAddress, "{直送先TEL}": h.shipTel, "{直送先担当者名}": h.shipRep, "{請求締日}": h.closingDate, "{支払日}": h.paymentDate, "{回収種別}": h.collectionMethod, "{レンタルID}": h.rentalId, "{現場名}": h.siteName, "{期間開始}": h.periodStartDate, "{期間終了}": h.periodEndDate, "{作成担当}": h.approvalCreator?.name, "{確認担当}": h.approvalCheck?.name, "{課長}": h.approvalManager?.name, "{部長}": h.approvalDirector?.name, "{社長}": h.approvalPresident?.name };
+
+    for (const [placeholder, value] of Object.entries(replacements)) { tempSheet.createTextFinder(placeholder).replaceAllWith((value === undefined || value === null) ? "" : String(value)); }
+
+    const itemStartRow = 15; 
+    data.items.forEach((item, i) => {
+      const r = itemStartRow + i;
+      if (item.productName) safeSet(tempSheet, "A" + r, item.productName);
+      if (item.quantity) safeSet(tempSheet, "C" + r, item.quantity);
+      if (item.unit) safeSet(tempSheet, "D" + r, item.unit);
+      if (item.unitPrice) safeSet(tempSheet, "E" + r, item.unitPrice);
+      if (item.amount) safeSet(tempSheet, "F" + r, item.amount);
+      if (item.note) safeSet(tempSheet, "G" + r, item.note);
+    });
+
+    SpreadsheetApp.flush(); 
+    if (fileColIdx !== -1) sheet.getRange(targetRowIndex, fileColIdx + 1).setValue(APPSHEET_FOLDER_NAME + "/" + fileName);
+
+    return { success: true, url: "https://docs.google.com/spreadsheets/d/" + tempFile.getId() + "/export?format=xlsx", driveUrl: tempFile.getUrl(), message: "Excelを発行しました" };
+  } catch (e) { return { success: false, message: "Excel生成エラー: " + e.message }; }
+}
+
+function safeSet(sheet, a1Notation, value) { try { if (value != null) sheet.getRange(a1Notation).setValue(value); } catch(e) {} }
+
+function getOrderData(orderNo, summaryCode) {
+  orderNo = cleanId(orderNo);
+  summaryCode = cleanId(summaryCode); 
+  var mode = 'sales';
+  if (String(summaryCode) === '65') mode = 'rental';
+  if (String(summaryCode) === '83') mode = 'communication';
+  if (!orderNo) return createMockData(orderNo, mode, [], "受注Noが空です");
+
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const staffMap = getStaffMap(ss), customerNoteMap = getCustomerNoteMap(ss), historyMap = getHistoryMap(ss, orderNo), customerMasterMap = getCustomerMasterMap(ss);
+    const productMasterMap = getProductMasterMap(ss); // 商品マスタの標準価格マップを取得
+    
+    const sheet = ss.getSheetByName(SHEETS.HEADER);
+    if (!sheet) return createMockData(orderNo, mode, [], "シートなし");
+
+    const headerValues = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const keyColIndex = headerValues.map(h => String(h).trim()).indexOf("受注No");
+    const data = sheet.getDataRange().getValues();
+    let headerRowRaw = null;
+    for (let i = 1; i < data.length; i++) { if (cleanId(data[i][keyColIndex]) === String(orderNo)) { headerRowRaw = data[i]; break; } }
+    if (!headerRowRaw) return createMockData(orderNo, mode, [], "受注No["+orderNo+"]のデータなし");
+    let headerRowObj = {};
+    headerValues.forEach((h, i) => headerRowObj[String(h).trim()] = headerRowRaw[i]);
+
+    const sheetSummaryCode = headerRowObj['摘要コード'] ? String(headerRowObj['摘要コード']).trim() : "";
+    if (sheetSummaryCode === '65') mode = 'rental';
+    else if (sheetSummaryCode === '83') mode = 'communication';
+    else if (sheetSummaryCode) mode = 'sales';
+
+    const getRelatedData = (sheetName) => {
+      const s = ss.getSheetByName(sheetName);
+      if (!s) return [];
+      const vals = s.getDataRange().getValues();
+      const h = vals[0].map(v => String(v).trim());
+      const keyIdx = h.indexOf("受注No");
+      return vals.slice(1).filter(row => cleanId(row[keyIdx]) === String(orderNo)).map(row => { 
+        let obj = {}; 
+        h.forEach((col, i) => obj[col] = row[i]); 
+        obj._raw = row; // 生データを保持して列インデックスでのアクセスを可能にする
+        return obj; 
+      });
+    };
+
+    const itemsData = getRelatedData(SHEETS.ITEMS).map(row => { 
+      let mapped = mapItemData(row);
+      
+      // 商品マスタから標準価格を引き当てて掛率を計算
+      const stdPrice = productMasterMap[mapped.productName];
+      mapped.standardPrice = stdPrice || 0; // フロントエンドでの再計算用に渡す
+
+      if (stdPrice && mapped.unitPrice && stdPrice !== 0) {
+        mapped.costRate = (Number(mapped.unitPrice) / Number(stdPrice) * 100).toFixed(1);
+      } else {
+        mapped.costRate = ''; // または '-'
+      }
+
+      mapped.shipped = historyMap[mapped.id] ? historyMap[mapped.id].shipped : false; 
+      return mapped; 
+    }).filter(item => { return item.id && String(item.id).trim() !== ""; }); // 数量0でもIDがあれば表示する
+    
+    const scheduleData = getRelatedData(SHEETS.SCHEDULE).map(mapScheduleData), remarksData = getRelatedData(SHEETS.REMARKS).map(mapRemarkData), headerData = mapHeaderData(headerRowObj, mode, staffMap, customerNoteMap, customerMasterMap);
+    // 合計計算（原価合計も追加）
+    const subtotal = itemsData.reduce((sum, i) => sum + (Number(i.amount)||0), 0) + scheduleData.reduce((sum, s) => sum + (Number(s.amount)||0), 0);
+    const tax = Math.floor(subtotal * 0.1); 
+    const totalCost = 0; // 自動計算しない（初期値なし）
+
+    return { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost } };
+  } catch (e) { return createMockData(orderNo, mode, [], "エラー: " + e.message); }
+}
+
+function approveOrder(orderNo, stampType, userName) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const colMap = { 'Creator': '作成者承認', 'Staff': '本社事務承認', 'Check': '営業担当者承認', 'Manager': '課長承認', 'Director': '部長承認', 'President': '社長承認' };
+    const colName = colMap[stampType];
+    const update = {};
+    update[colName] = "済"; // AppSheet連動のため「済」を上書き
+    updateOrAddRow(ss, SHEETS.HEADER, '受注No', orderNo, update);
+    return { success: true };
+  } catch (e) { return { success: false, message: e.toString() }; }
+}
+
+function getHistoryMap(ss, orderNo) {
+  const map = {};
+  try {
+    const sheet = ss.getSheetByName(SHEETS.HISTORY), values = sheet.getDataRange().getValues(), headers = values[0].map(h => String(h).trim());
+    const idIdx = headers.indexOf("受注明細No"), dateIdx = headers.indexOf("出荷日"), orderNoIdx = headers.indexOf("受注No");
+    for (let i = 1; i < values.length; i++) { if (orderNoIdx !== -1 && cleanId(values[i][orderNoIdx]) !== String(orderNo)) continue; map[String(values[i][idIdx]).trim()] = { shipped: !!values[i][dateIdx] }; }
+  } catch (e) {}
+  return map;
+}
+
+function getProductMasterMap(ss) {
+  const map = {};
+  try {
+    const sheet = ss.getSheetByName(SHEETS.PRODUCT_MASTER);
+    if (!sheet) return {};
+    const values = sheet.getDataRange().getValues();
+    // A=0, B=1(商品名), Q=16(標準価格)
+    for (let i = 1; i < values.length; i++) {
+      const name = String(values[i][1]).trim();
+      if (name) map[name] = values[i][16]; 
+    }
+  } catch(e) {}
+  return map;
+}
+
+function getStaffMap(ss) { const map = {}; try { const sheet = ss.getSheetByName(SHEETS.STAFF), values = sheet.getDataRange().getValues(), codeIdx = values[0].indexOf("担当者コード"), nameIdx = values[0].indexOf("担当者名"); for (let i = 1; i < values.length; i++) map[String(values[i][codeIdx]).trim()] = values[i][nameIdx]; } catch (e) {} return map; }
+function getCustomerNoteMap(ss) { const map = {}; try { const sheet = ss.getSheetByName(SHEETS.CUSTOMER), values = sheet.getDataRange().getValues(), codeIdx = values[0].indexOf("得意先コード"), noteIdx = values[0].indexOf("得意先備考"); for (let i = 1; i < values.length; i++) map[String(values[i][codeIdx]).trim()] = values[i][noteIdx]; } catch(e) {} return map; }
+
+function getCustomerMasterMap(ss) { 
+  const map = {}; 
+  try { 
+    const sheet = ss.getSheetByName(SHEETS.CUSTOMER);
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0].map(h => String(h).trim());
+
+    // 各列のインデックスを取得
+    const codeIdx = headers.indexOf("得意先コード");
+    const collIdx = headers.indexOf("回収日");
+    const closeIdx = headers.indexOf("請求締日");
+    
+    // 追加: 基本情報のインデックス
+    const branchIdx = headers.indexOf("得意先名２"); // C列相当(支店名)
+    const zipIdx = headers.indexOf("郵便番号");      // H列相当
+    const addr1Idx = headers.indexOf("住所１");      // I列相当
+    const addr2Idx = headers.indexOf("住所２");      // J列相当
+    const telIdx = headers.indexOf("会社TEL");       // K列相当
+    const faxIdx = headers.indexOf("会社FAX");       // L列相当
+
+    for (let i = 1; i < values.length; i++) { 
+      const code = String(values[i][codeIdx]).trim(); 
+      if (code) {
+        map[code] = { 
+          collectionCode: collIdx !== -1 ? values[i][collIdx] : "", 
+          closingDate: closeIdx !== -1 ? values[i][closeIdx] : "",
+          branchName: branchIdx !== -1 ? values[i][branchIdx] : "",
+          zipCode: zipIdx !== -1 ? values[i][zipIdx] : "",
+          address1: addr1Idx !== -1 ? values[i][addr1Idx] : "",
+          address2: addr2Idx !== -1 ? values[i][addr2Idx] : "",
+          tel: telIdx !== -1 ? values[i][telIdx] : "",
+          fax: faxIdx !== -1 ? values[i][faxIdx] : ""
+        }; 
+      }
+    } 
+  } catch(e) {} 
+  return map; 
+}
+
+function createMockData(orderNo, mode, logs, msg) { return { success: false, mode: mode, header: { formId: "SYSTEM", title: msg, orderNo: orderNo || "---", dataStatus: 'official' }, items: [], schedule: [], remarks: [], totals: {subtotal:0, tax:0, total:0} }; }
+
+function saveOrderData(saveData) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const orderNo = cleanId(saveData.header.orderNo);
+    if (!orderNo) return { success: false, message: "受注Noなし" };
+    const itemSheet = ss.getSheetByName(SHEETS.ITEMS), itemData = itemSheet.getDataRange().getValues(), itemH = itemData[0].map(h => String(h).trim()), idIdx = itemH.indexOf("受注明細No"), orderIdx = itemH.indexOf("受注No"), qtyIdx = itemH.indexOf("数量");
+    const submittedIds = saveData.items.map(item => String(item.id));
+    for (let i = itemData.length - 1; i >= 1; i--) { if (cleanId(itemData[i][orderIdx]) === orderNo) { if (!submittedIds.includes(String(itemData[i][idIdx])) && Number(itemData[i][qtyIdx]) > 0) itemSheet.deleteRow(i + 1); } }
+    
+    // ヘッダー情報の保存
+    updateSheet(ss, SHEETS.HEADER, '受注No', orderNo, reverseMapHeader(saveData.header));
+    
+    saveData.items.forEach(item => { 
+        if(!item.id || String(item.id).startsWith('pad-')) return; 
+        updateOrAddRow(ss, SHEETS.ITEMS, '受注明細No', item.id, { 
+            '受注No': orderNo, 
+            '受注明細No': item.id, 
+            '商品名': item.productName, 
+            '数量': item.quantity, 
+            '単位': item.unit, 
+            '単価': item.unitPrice, 
+            '受注金額': item.amount, 
+            '原価金額': item.costAmount, 
+            '品名・製造№等': item.note, // UI上は「品名・製造№等」だがDB上は「備考」
+            '種別': saveData.mode, 
+            '取引年月日': item.transactionDate,
+            '原価単価': item.costPrice,
+            '掛率': item.costRate,
+            // 新規項目
+            '製造依頼№': item.manufacturingNo, 
+            '手配日': item.arrangementDate
+        }); 
+    });
+    saveData.schedule.forEach(sch => { if(!sch.id || String(sch.id).startsWith('pad-')) return; updateOrAddRow(ss, SHEETS.SCHEDULE, '請求ID', sch.id, { '受注No': orderNo, '請求ID': sch.id, '回数': sch.count, '請求売上日': sch.billingDate, '請求金額': sch.amount, '原価金額': sch.costReference, '伝票No': sch.slipNo, '締め日': sch.closingDate, 'チェック状況': sch.checkStatus, '種別': saveData.mode, '行受注No': sch.rowOrderNo, '備考': sch.note }); });
+    if (saveData.header.customerCode) updateOrAddRow(ss, SHEETS.CUSTOMER, '得意先コード', saveData.header.customerCode, { '得意先コード': saveData.header.customerCode, '得意先備考': saveData.header.customerNote });
+    return { success: true, message: "保存しました" };
+  } catch(e) { return { success: false, message: "保存エラー: " + e.toString() }; }
+}
+
+// 全角変換ユーティリティ (半角数字 -> 全角数字)
+function toFullWidth(str) {
+  return String(str).replace(/[0-9]/g, s => String.fromCharCode(s.charCodeAt(0) + 0xFEE0));
+}
+
+function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) {
+  if (!row) return {};
+  const getVal = (k) => (row[k] !== undefined ? String(row[k]) : "");
+  const code = getVal('得意先コード');
+  const getStamp = (col, label) => ({ status: getVal(col) === '済' ? '済' : '', name: getVal(col) === '済' ? label : '', date: "" });
+  
+  // 得意先マスタから詳細情報を取得
+  const custInfo = customerMasterMap[code] || {};
+
+  const ships = {};
+  
+  // ★JSONカラムからの展開処理 (旧フラット構造を廃止しJSON統合)
+  const jsonVal = getVal('出荷配送詳細(JSON)'); // 実際のシートの列名に合わせてください（例: "出荷指示JSON" ならそちらに変更）
+  let loadedFromJson = false;
+  if (jsonVal) {
+    try {
+      const parsed = JSON.parse(jsonVal);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((item, idx) => {
+          const n = idx + 1;
+          ships[`shipDate${n}`] = item.shipDate || "";
+          ships[`deliveryDate${n}`] = item.deliveryDate || "";
+          ships[`deliveryTime${n}`] = item.deliveryTime || "";
+          ships[`informationNo${n}`] = item.informationNo || "";
+          ships[`shippingNo${n}`] = item.shippingNo || "";
+          ships[`deliveryMethod${n}`] = item.deliveryMethod || "";
+        });
+        loadedFromJson = true;
+      }
+    } catch (e) {
+      // JSONパースエラーは無視
+    }
+  }
+
+  // JSONがない、またはパース失敗時のためのフォールバック(移行期用: 念のため残すが、JSON優先)
+  if (!loadedFromJson) {
+    for (let i = 1; i <= 10; i++) { 
+      // スプレッドシートの列名が半角(出荷日1)か全角(出荷日１)かに関わらず取得できるようにする
+      const sI = String(i);
+      const fI = toFullWidth(sI);
+      
+      const sd = getVal(`出荷日${i}`) || getVal(`出荷日${fI}`);
+      if(sd) ships[`shipDate${i}`] = sd;
+
+      const dd = getVal(`納期${i}`) || getVal(`納期${fI}`);
+      if(dd) ships[`deliveryDate${i}`] = dd;
+
+      const dt = getVal(`時間帯${i}`) || getVal(`時間帯${fI}`);
+      if(dt) ships[`deliveryTime${i}`] = dt;
+
+      // FM列を参照するように変更
+      const info = getVal(`FM情報No${i}`) || getVal(`FM情報No${fI}`) || getVal(`情報No${i}`) || getVal(`情報No${fI}`);
+      if(info) ships[`informationNo${i}`] = info;
+
+      const shipNo = getVal(`FM出荷No${i}`) || getVal(`FM出荷No${fI}`) || getVal(`出荷No${i}`) || getVal(`出荷No${fI}`);
+      if(shipNo) ships[`shippingNo${i}`] = shipNo;
+
+      const dm = getVal(`配送方法${i}`) || getVal(`配送方法${fI}`);
+      if(dm) ships[`deliveryMethod${i}`] = dm;
+    }
+  }
+  
+  // 担当者コードから担当営業名を解決
+  const salesRepName = staffMap[getVal('担当者コード')] || getVal('担当者コード');
+
+  return { 
+    formId: "様式 03-3BU-004-6 170410", 
+    title: mode === 'sales' ? "受注兼発送依頼書" : (mode === 'rental' ? "レンタル受注兼発送依頼書" : "通信費 受注兼発送依頼書"), 
+    orderNo: getVal('受注No'), 
+    estimateNo: getVal('見積書No'), 
+    date: formatDate(row['受注日']), 
+    customerCode: code, 
+    customerName: getVal('得意先名'), 
+    
+    // 得意先マスタから取得
+    branchName: custInfo.branchName || "", 
+    customerZipCode: custInfo.zipCode || "", 
+    customerAddress: (custInfo.address1 || "") + (custInfo.address2 || ""), 
+    customerTel: custInfo.tel || "", 
+    customerFax: custInfo.fax || "", 
+    
+    customerNote: customerNoteMap[code] || "", 
+    
+    // 直送先情報（受注データの指定列から取得）
+    shipName: getVal('直送先名'), 
+    shipCode: getVal('直送先コード'), 
+    // ユーザー指示: 郵便番号 住所１ 住所２ 会社TEL という列名から取ってきてほしい
+    // 直送先住所欄には郵便番号入力欄がないため、住所テキストに結合して表示する
+    shipAddress: (getVal('郵便番号') ? "〒" + getVal('郵便番号') + " " : "") + (getVal('住所１') || "") + (getVal('住所２') || ""), 
+    shipTel: getVal('会社TEL'), 
+    shipRep: getVal('直送先担当者名') || "", 
+    
+    salesRepInternalMain: salesRepName, 
+    salesRep: salesRepName, // 担当者コードから引いた名前をセット
+    salesRepClient: getVal('先方担当者名'),
+    internalMemo: getVal('技術課依頼'), // 技術課依頼書のバインディング追加
+    
+    orderNoClient: getVal('注文No'),
+    endUser: getVal('E/U'),
+    
+    closingDate: getVal('請求締日') || (custInfo.closingDate), 
+    paymentDate: getVal('支払日') || convertCollectionDate(custInfo.collectionCode), 
+    collectionMethod: getVal('回収種別１'), 
+    dataStatus: getVal('データステータス') || 'official', 
+    rentalId: getVal('レンタルID'), 
+    siteName: getVal('現場名'), 
+    periodStartDate: getVal('期間開始'), 
+    periodEndDate: getVal('期間終了'), 
+    
+    approvalStaff: getStamp('本社事務承認', '本社事務'), // 入力者から本社事務承認へ変更
+    
+    approvalCreator: getStamp('作成者承認', '作成'), 
+    approvalCheck: getStamp('営業担当者承認', '確認'), 
+    approvalManager: getStamp('課長承認', '課長'), 
+    approvalDirector: getStamp('部長承認', '部長'), 
+    approvalPresident: getStamp('社長承認', '社長'), 
+    
+    // 売上日を「受注日」の値に変更
+    salesDate: formatDate(row['受注日']), 
+    // 伝票Noの取得を強化（半角・全角）
+    headerSlipNo: getVal('伝票No') || getVal('伝票Ｎｏ'), 
+    totalCost: row['原価合計'] || '', 
+    ...ships 
+  };
+}
+
+function reverseMapHeader(h) {
+  const b = { 
+    '受注日': h.date, 
+    '得意先コード': h.customerCode, 
+    '得意先名': h.customerName, 
+    '支店名': h.branchName, 
+    '見積書No': h.estimateNo, 
+    '直送先名': h.shipName, 
+    '先方担当者名': h.salesRepClient, 
+    '請求締日': h.closingDate, 
+    '支払日': h.paymentDate, 
+    '回収種別１': h.collectionMethod, 
+    '郵便番号': h.customerZipCode, 
+    '住所１': h.customerAddress, 
+    '会社TEL': h.customerTel, 
+    'データステータス': h.dataStatus, 
+    // 個別の '配送方法' 等のカラム書き込みは廃止し、JSONへ統合
+    '直送先担当者名': h.shipRep, 
+    '直送先TEL': h.shipTel, 
+    'レンタルID': h.rentalId, 
+    '現場名': h.siteName, 
+    '期間開始': h.periodStartDate, 
+    '期間終了': h.periodEndDate, 
+    '得意先備考': h.customerNote, 
+    '売上日': h.salesDate, 
+    '伝票No': h.headerSlipNo, 
+    '直送先コード': h.shipCode, 
+    '原価合計': h.totalCost, 
+    '担当営業': h.salesRep, // ※担当営業は保存時には文字情報として保存されるが、本来は担当者コードとして保存すべきかは要件による(今回はUIからの保存を優先)
+    '注文No': h.orderNoClient,
+    'E/U': h.endUser,
+    '技術課依頼': h.internalMemo, // 保存項目追加
+    '作成者承認': h.approvalCreator?.status === '済' ? '済' : '', 
+    '本社事務承認': h.approvalStaff?.status === '済' ? '済' : '', // 本社事務承認を保存
+    '営業担当者承認': h.approvalCheck?.status === '済' ? '済' : '', 
+    '課長承認': h.approvalManager?.status === '済' ? '済' : '', 
+    '部長承認': h.approvalDirector?.status === '済' ? '済' : '', 
+    '社長承認': h.approvalPresident?.status === '済' ? '済' : '',
+    '出荷配送詳細(JSON)': '' // 初期化
+  };
+  
+  // ★JSONへの集約処理
+  const shippingDetails = [];
+  // 最大10行までチェック
+  for (let i = 1; i <= 10; i++) { 
+    const shipDate = h[`shipDate${i}`];
+    const deliveryDate = h[`deliveryDate${i}`];
+    const deliveryTime = h[`deliveryTime${i}`];
+    const informationNo = h[`informationNo${i}`];
+    const shippingNo = h[`shippingNo${i}`];
+    const deliveryMethod = h[`deliveryMethod${i}`];
+
+    // 何らかのデータがある行のみ追加
+    if (shipDate || deliveryDate || deliveryTime || informationNo || shippingNo || deliveryMethod) {
+        shippingDetails.push({
+            shipDate: shipDate || "",
+            deliveryDate: deliveryDate || "",
+            deliveryTime: deliveryTime || "",
+            informationNo: informationNo || "",
+            shippingNo: shippingNo || "",
+            deliveryMethod: deliveryMethod || ""
+        });
+    }
+  }
+
+  if (shippingDetails.length > 0) {
+      b['出荷配送詳細(JSON)'] = JSON.stringify(shippingDetails);
+  }
+  
+  return b;
+}
+
+function updateOrAddRow(ss, sheetName, keyColName, keyVal, dataObj) { const sheet = ss.getSheetByName(sheetName); if (!sheet) return; const lastCol = sheet.getLastColumn(), headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim()), keyColIndex = headers.indexOf(keyColName), data = sheet.getDataRange().getValues(); let rowIndex = -1; const targetKey = cleanId(keyVal); for (let i = 1; i < data.length; i++) { if (cleanId(data[i][keyColIndex]) === targetKey) { rowIndex = i + 1; break; } } const rowData = headers.map(h => dataObj.hasOwnProperty(h) ? dataObj[h] : null); if (rowIndex > 0) { const currentRow = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0], newRow = rowData.map((val, i) => (val !== null && val !== undefined) ? val : currentRow[i]); sheet.getRange(rowIndex, 1, 1, headers.length).setValues([newRow]); } else { const cleanRow = rowData.map(v => (v === null || v === undefined) ? "" : v); sheet.appendRow(cleanRow); } }
+function updateSheet(ss, sheetName, keyColName, keyVal, dataObj) { updateOrAddRow(ss, sheetName, keyColName, keyVal, dataObj); }
+function mapItemData(row) { 
+    return { 
+        id: row['受注明細No'], 
+        productName: row['商品名'], 
+        quantity: row['数量'], 
+        unit: row['単位'], 
+        unitPrice: row['単価'], 
+        amount: row['受注金額'], 
+        costAmount: row['原価金額'], 
+        note: row['品名・製造№等'] || row['備考'], 
+        transactionDate: formatDate(row['取引年月日']),
+        // 新設項目の読み込み（列が存在しない場合はundefined/空になる）
+        costPrice: (row._raw && row._raw[12]) ? row._raw[12] : (row['原価単価'] || row['原価'] || ''), // M列=12
+        costRate: row['掛率'],
+        // 新規項目
+        manufacturingNo: row['製造依頼№'],
+        arrangementDate: formatDate(row['手配日'])
+    }; 
+}
+function mapScheduleData(row) { return { id: row['請求ID'], count: row['回数'], billingDate: formatDate(row['請求売上日']), amount: row['請求金額'], costReference: row['原価金額'], slipNo: row['伝票No'], closingDate: formatDate(row['締め日']), checkStatus: row['チェック状況'], rowOrderNo: row['行受注No'], note: row['備考'] }; }
+function mapRemarkData(row) { return { id: row['備考No'], category: row['カテゴリ'], content: row['備考'], date: formatDate(row['日時']) }; }
+function formatDate(val) { if (!val) return ""; if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy/MM/dd"); return String(val); }
