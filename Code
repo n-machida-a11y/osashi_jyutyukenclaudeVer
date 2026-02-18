@@ -405,6 +405,9 @@ function saveOrderData(saveData) {
       '種別': saveData.mode, '行受注No': sch.rowOrderNo, '備考': sch.note
     }));
 
+    // 備考保存
+    if (saveData.remarks) saveData.remarks.forEach(rmk => { if(!rmk.id || String(rmk.id).startsWith('pad-')) return; updateOrAddRow(ss, SHEETS.REMARKS, '備考No', rmk.id, { '備考No': rmk.id, '受注No': orderNo, 'カテゴリ': rmk.category || 'その他', '備考': rmk.content || '', '日時': rmk.date || '', '状況': rmk.status || '', 'メール送付': rmk.mailSent || '', '追加CC': rmk.additionalCC || '' }); });
+
     // 得意先備考
     if (saveData.header.customerCode) {
       updateOrAddRow(ss, SHEETS.CUSTOMER, '得意先コード', saveData.header.customerCode,
@@ -715,7 +718,7 @@ function mapItemData(row) {
     }; 
 }
 function mapScheduleData(row) { return { id: row['請求ID'], count: row['回数'], billingDate: formatDate(row['請求売上日']), amount: row['請求金額'], costReference: row['原価金額'], slipNo: row['伝票No'], closingDate: formatDate(row['締め日']), checkStatus: row['チェック状況'], rowOrderNo: row['行受注No'], note: row['備考'] }; }
-function mapRemarkData(row) { return { id: row['備考No'], category: row['カテゴリ'], content: row['備考'], date: formatDate(row['日時']) }; }
+function mapRemarkData(row) { return { id: row['備考No'], category: row['カテゴリ'], content: row['備考'], date: formatDate(row['日時']), status: row['状況'] || '', mailSent: row['メール送付'] || '', additionalCC: row['追加CC'] || '' }; }
 function formatDate(val) { if (!val) return ""; if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy/MM/dd"); return String(val); }
 
 /**

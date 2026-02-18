@@ -329,10 +329,12 @@
         const deleteSchedule = (idx) => { if (isLocked) return; const newSched = [...schedule]; newSched.splice(idx, 1); recalcTotals(items, newSched); };
         const addScheduleRow = () => { if (isLocked) return; const newRow = { id: generateId(), count: '', billingDate: '', amount: 0, costReference: '', slipNo: '', closingDate: '', checkStatus: '', rowOrderNo: '', note: '' }; recalcTotals(items, [...schedule, newRow]); };
         const addExtensionRow = () => { if (isLocked) return; const newRow = { id: generateId(), count: '延長', billingDate: '', amount: 0, costReference: '', slipNo: '', closingDate: '', checkStatus: '', rowOrderNo: '', note: '' }; recalcTotals(items, [...schedule, newRow]); };
+        const updateRemark = (idx, key, val) => { if (isLocked) return; const newRemarks = [...remarks]; newRemarks[idx] = { ...newRemarks[idx], [key]: val }; onChange({ ...data, remarks: newRemarks }); };
+        const deleteRemark = (idx) => { if (isLocked) return; const newRemarks = [...remarks]; newRemarks.splice(idx, 1); onChange({ ...data, remarks: newRemarks }); };
 
         const handleApproveAction = (stampType, stampLabel) => {
           const approverName = (CONFIG.userName && CONFIG.userName !== '担当者') ? CONFIG.userName : stampLabel;
-          setConfirmState({ isOpen: true, message: `「${approverName}」として承認してよろしいですか？`, onConfirm: () => { if (typeof google !== 'undefined' && google.script) google.script.run.withSuccessHandler((res) => { if(res.success) updateHeader(`approval${stampType}`, { status: '済', name: approverName, date: getTodayString() }); }).approveOrder(header.orderNo, stampType, approverName); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) });
+          setConfirmState({ isOpen: true, message: `「${approverName}」として承認してよろしいですか？`, onConfirm: () => { setConfirmState({ isOpen: false }); if (typeof google !== 'undefined' && google.script) google.script.run.withSuccessHandler((res) => { if(res.success) onChange({ ...data, header: { ...header, [`approval${stampType}`]: { status: '済', name: approverName, date: getTodayString() } } }); }).approveOrder(header.orderNo, stampType, approverName); }, onCancel: () => setConfirmState({ isOpen: false }) });
         }
         const handleRowShipConfirm = (n) => {
           if (header[`shipConfirmName${n}`]) return;
@@ -347,7 +349,7 @@
           });
         };
 
-        const canApprove = (type) => { const info = header[`approval${type}`]; if(info && info.status === '済') return false; if (type === 'Creator') return true; if (type === 'Staff') return true; if (CONFIG.userTitle === '営業担当者' && type === 'Check') return true; if (CONFIG.userTitle === '課長' && (type === 'Manager' || type === 'Director')) return true; if (CONFIG.userTitle.includes('社長') && type === 'President') return true; return false; }
+        const canApprove = (type) => { const info = header[`approval${type}`]; if(info && info.status === '済') return false; if (type === 'Creator') return true; if (type === 'Staff') return CONFIG.userTitle === '本社事務' || CONFIG.userTitle.includes('本社事務'); if (CONFIG.userTitle === '営業担当者' && type === 'Check') return true; if (CONFIG.userTitle === '課長' && (type === 'Manager' || type === 'Director')) return true; if (CONFIG.userTitle === '部長' && type === 'Director') return true; if (CONFIG.userTitle.includes('社長') && type === 'President') return true; return false; }
 
         const Stamp = ({ title, info, stampKey, className }) => (
           <div className={`flex flex-col items-center justify-between border-l border-black w-14 h-20 bg-white ${className}`}>
@@ -395,7 +397,7 @@
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">
-                  <div className="text-sm font-medium mr-2 flex items-center w-32 justify-end">{saveStatus === 'saving' && <span className="text-blue-600 animate-pulse flex items-center"><Loader className="w-4 h-4 mr-1 animate-spin" /> 保存中...</span>}{saveStatus === 'saved' && <span className="text-green-600 flex items-center fade-out"><CloudCheck className="w-4 h-4 mr-1" /> 保存完了</span>}</div>
+                  <div className="w-4"></div>
                   <button onClick={onExportExcel} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm shadow flex items-center"><FileSpreadsheet className="w-4 h-4 mr-2" /> Excel出力</button>
                   <button onClick={() => window.print()} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm flex items-center"><Printer className="w-4 h-4 mr-2" /> 印刷</button>
 
@@ -668,7 +670,7 @@
                         </div>
                     </div>
                   }
-                  <div className="p-1 bg-white print-hidden text-center"><button onClick={() => { if(!isLocked) onChange({...data, items: [...items, { id: generateId(), productName: '', transactionDate: '', quantity: '', unit: '', unitPrice: '', amount: 0, costAmount: 0 }]})}} disabled={isLocked} className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-center w-full"><Plus className="w-3 h-3 mr-1" /> 明細を追加</button></div>
+                  <div className="p-1 bg-white print-hidden text-center"><button onClick={() => { if(!isLocked) { const newItems = [...items, { id: generateId(), productName: '', transactionDate: '', quantity: '', unit: '', unitPrice: '', amount: 0, costAmount: 0 }]; recalcTotals(newItems, schedule); }}} disabled={isLocked} className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-center w-full"><Plus className="w-3 h-3 mr-1" /> 明細を追加</button></div>
                 </div>
                 {(mode === 'rental' || mode === 'communication') && (
                   <div className="border-2 border-black mb-6">
@@ -679,8 +681,9 @@
                 )}
                 <div className="mt-4">
                     <div className="border border-black p-3">
-                        <div className="text-xs font-bold border-b border-black mb-2 flex justify-between items-center bg-label px-2 py-1"><span>備考 / 履歴</span><button onClick={() => { if(!isLocked) onChange({...data, remarks: [...remarks, { id: generateId(), category: 'その他', content: '', date: new Date().toISOString().split('T')[0].replace(/-/g, '/'), status: '', mailSent: '' }]})}} disabled={isLocked} className="text-blue-600 flex items-center text-[10px] border border-blue-200 px-1 bg-white rounded"><Plus className="w-3 h-3 mr-1" /> 追加</button></div>
-                        <div className="overflow-y-auto max-h-48 space-y-1">{remarks.map((rmk, idx) => <div key={rmk.id} className="grid grid-cols-[80px_1fr_100px] gap-2 text-xs border-b border-gray-100 pb-1 items-center"><span className="bg-gray-100 rounded text-center py-0.5 text-[10px] font-bold">{rmk.category}</span><input className="w-full bg-transparent outline-none" value={rmk.content || ''} onChange={e => { const newRemarks = [...remarks]; newRemarks[idx].content = e.target.value; onChange({...data, remarks: newRemarks}); }} disabled={isLocked} /><span className="text-right text-gray-400 font-mono">{rmk.date}</span></div>)}</div>
+                        <div className="text-xs font-bold border-b border-black mb-2 flex justify-between items-center bg-label px-2 py-1"><span>備考 / 履歴</span><button onClick={() => { if(!isLocked) onChange({...data, remarks: [...remarks, { id: generateId(), category: 'その他', content: '', date: new Date().toISOString().split('T')[0].replace(/-/g, '/'), status: '', mailSent: '', additionalCC: '' }]})}} disabled={isLocked} className="text-blue-600 flex items-center text-[10px] border border-blue-200 px-1 bg-white rounded"><Plus className="w-3 h-3 mr-1" /> 追加</button></div>
+                        {remarks.length > 0 && <div className="grid grid-cols-[60px_1fr_68px_54px_54px_88px_18px] gap-1 text-[9px] font-bold text-gray-500 bg-gray-50 rounded px-1 py-0.5 mb-1"><div>カテゴリ</div><div>備考</div><div>日時</div><div>状況</div><div>メール</div><div>追加CC</div><div></div></div>}
+                        <div className="overflow-y-auto max-h-40 space-y-1">{remarks.map((rmk, idx) => <div key={rmk.id} className="grid grid-cols-[60px_1fr_68px_54px_54px_88px_18px] gap-1 text-xs border-b border-gray-100 pb-1 items-center"><select value={rmk.category || 'その他'} onChange={e => updateRemark(idx, 'category', e.target.value)} disabled={isLocked} className="text-[10px] bg-gray-100 rounded border border-gray-200 outline-none w-full py-0.5 cursor-pointer"><option value="請求">請求</option><option value="出荷">出荷</option><option value="その他">その他</option></select><input className="w-full bg-transparent outline-none" value={rmk.content || ''} onChange={e => updateRemark(idx, 'content', e.target.value)} disabled={isLocked} /><span className="text-gray-400 font-mono text-[9px] text-center leading-tight">{rmk.date}</span><input className="w-full bg-transparent outline-none text-[10px] border-b border-gray-200" value={rmk.status || ''} onChange={e => updateRemark(idx, 'status', e.target.value)} disabled={isLocked} placeholder="状況" /><input className="w-full bg-transparent outline-none text-[10px] border-b border-gray-200" value={rmk.mailSent || ''} onChange={e => updateRemark(idx, 'mailSent', e.target.value)} disabled={isLocked} placeholder="済/日付" /><input className="w-full bg-transparent outline-none text-[10px] border-b border-gray-200" value={rmk.additionalCC || ''} onChange={e => updateRemark(idx, 'additionalCC', e.target.value)} disabled={isLocked} placeholder="CCメール" /><button onClick={() => deleteRemark(idx)} disabled={isLocked} className="text-gray-300 hover:text-red-500 flex items-center justify-center"><X className="w-3 h-3" /></button></div>)}</div>
                     </div>
                 </div>
               </div>
@@ -762,6 +765,21 @@
         if (loading) return null;
         return (
           <div className="min-h-screen bg-gray-200 p-6 flex flex-col items-center pb-40">
+            {saveStatus === 'saving' && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999] print:hidden">
+                <div className="bg-white rounded-2xl shadow-2xl p-10 flex flex-col items-center gap-5">
+                  <div className="w-14 h-14 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <div className="text-xl font-bold text-gray-800">保存中...</div>
+                  <div className="text-sm text-gray-500">しばらくお待ちください</div>
+                </div>
+              </div>
+            )}
+            {saveStatus === 'saved' && (
+              <div className="fixed top-6 right-6 bg-green-600 text-white px-6 py-3 rounded-xl shadow-2xl z-[9999] flex items-center gap-3 print:hidden">
+                <CloudCheck className="w-5 h-5" />
+                <span className="font-bold text-base">保存完了</span>
+              </div>
+            )}
             <div id="tab-bar" className="w-full max-w-[1400px] flex items-end space-x-1 mb-0 print-hidden">
                {tabs.map(tab => <div key={tab.id} onClick={() => setActiveTabId(tab.id)} className={`px-4 py-2 rounded-t-lg font-bold text-sm cursor-pointer border-t border-x relative group transition-all flex items-center ${activeTabId === tab.id ? 'tab-active shadow-sm z-10' : 'tab-inactive hover:bg-gray-100'}`} style={{ height: '42px' }}><span className="mr-2">{tab.title}</span><button onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button></div>)}
                <div className="relative"><button onClick={() => setAddMenuOpen(!addMenuOpen)} className="px-3 py-2 bg-gray-600 text-white rounded-t-lg hover:bg-gray-700 transition-colors flex items-center h-[42px] font-bold text-xs"><Plus className="w-4 h-4 mr-1" /> 追加</button>{addMenuOpen && <div className="absolute top-10 left-0 bg-white shadow-xl rounded border border-gray-300 w-32 z-50 overflow-hidden"><button onClick={() => addNewTab('sales')} className="block w-full text-left px-4 py-2 hover:bg-blue-50 text-sm">販売</button><button onClick={() => addNewTab('rental')} className="block w-full text-left px-4 py-2 hover:bg-green-50 text-sm">レンタル</button><button onClick={() => addNewTab('communication')} className="block w-full text-left px-4 py-2 hover:bg-purple-50 text-sm">通信費</button></div>}</div>
