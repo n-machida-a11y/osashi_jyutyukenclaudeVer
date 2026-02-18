@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>受注兼発送依頼書</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@700&display=swap');
+      body { font-family: 'Noto Sans JP', sans-serif; background-color: #f3f4f6; }
+      .font-serif { font-family: 'Noto Serif JP', serif; }
+      .border-black { border-color: #000 !important; }
+      .bg-label { background-color: #e5e7eb; }
+      @media print {
+        .print-hidden { display: none !important; }
+        .print-full { width: 100% !important; max-width: none !important; padding: 0 !important; margin: 0 !important; box-shadow: none !important; border: none !important; }
+        @page { size: A4; margin: 10mm; }
+        body { background: white; -webkit-print-color-adjust: exact; }
+        #tab-bar { display: none !important; }
+      }
+      .writing-vertical-lr { writing-mode: vertical-lr; }
+      .tab-active { background-color: white; border-bottom-color: white; color: #2563eb; }
+      .tab-inactive { background-color: #f3f4f6; border-bottom-color: #d1d5db; color: #6b7280; }
+      .input-locked { background-color: #f9fafb; color: #374151; cursor: not-allowed; }
+      .input-error { background-color: #fef2f2; border: 2px solid #ef4444 !important; }
+      /* 検索候補リスト用 */
+      .suggestion-list { max-height: 200px; overflow-y: auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); }
+      .suggestion-item:hover { background-color: #eff6ff; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="loading">
+      <div class="fixed inset-0 bg-white bg-opacity-80 flex flex-col items-center justify-center z-[10000]">
+        <div class="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+        <div class="text-lg font-bold">システムを起動中...</div>
+      </div>
+    </div>
+    <div id="gas-data" style="display:none" data-order-no="<?= initialOrderNo ?>" data-summary-code="<?= initialSummaryCode ?>" data-user-role="<?= userRole ?>" data-user-title="<?= userTitle ?>" data-user-name="<?= userName ?>"></div>
+    <datalist id="closing-dates"><option value="10日"/><option value="20日"/><option value="末日"/></datalist>
+    <datalist id="payment-dates"><option value="当月末"/><option value="翌月10日"/><option value="翌月20日"/><option value="翌月末"/><option value="翌々月10日"/></datalist>
+    <datalist id="shipping-methods"><option value="※工場出荷無し"/><option value="ヤマト(PM)"/><option value="出荷庫準備"/><option value="レターパック"/><option value="航空便"/><option value="ヤマト(AM)"/><option value="佐川"/></datalist>
+    
+    <!-- 追加: 技術課依頼の選択肢 -->
+    <datalist id="tech-requests">
+        <option value="機械器具設置"/>
+        <option value="電気通信"/>
+        <option value="保守点検"/>
+        <option value="修繕"/>
+        <option value="その他"/>
+    </datalist>
+
+    <!-- 追加: 支払条件詳細の選択肢 -->
+    <datalist id="payment-details">
+        <option value="現金"/>
+        <option value="手形　サイト90日"/>
+        <option value="手形　サイト120日"/>
+        <option value="手形　サイト115日"/>
+        <option value="10万以上手形　サイト70日"/>
+        <option value="10万以上手形　サイト90日"/>
+        <option value="10万以上手形　サイト97日"/>
+        <option value="10万以上手形　サイト120日"/>
+        <option value="50万以上半金半手サイト115日"/>
+        <option value="10万以上手形"/>
+        <option value="手形"/>
+    </datalist>
+
+    <script type="text/babel" data-presets="react,typescript">
+      const { useState, useEffect, useMemo, useRef, useLayoutEffect } = React;
+      const generateId = () => crypto.randomUUID();
+      const safeText = (val) => (val === undefined || val === null) ? '' : String(val);
+      const gasDataEl = document.getElementById('gas-data');
+      // デフォルト受注Noを 250969 に設定
+      const CONFIG = { initialOrderNo: gasDataEl?.dataset.orderNo || "250969", initialSummaryCode: gasDataEl?.dataset.summaryCode || "", userRole: gasDataEl?.dataset.userRole || "sales", userTitle: gasDataEl?.dataset.userTitle || "", userName: gasDataEl?.dataset.userName || "担当者" };
+      const getTodayString = () => new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/');
+
+      const CustomConfirm = ({ isOpen, message, onConfirm, onCancel }) => {
+        if (!isOpen) return null;
+        return (
+          <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-[11000] print:hidden">
+            <div className="bg-white rounded-lg shadow-2xl p-6 w-[400px] border border-gray-200">
+              <div className="text-gray-800 text-base mb-6 font-medium leading-relaxed">{message}</div>
+              <div className="flex justify-end space-x-3">
+                <button onClick={onCancel} className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-100 rounded-md border border-gray-300">キャンセル</button>
+                <button onClick={onConfirm} className="px-5 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-md shadow-sm">OK</button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const IconWrapper = ({ children, className }) => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>{children}</svg>;
+      const Printer = ({ className }) => <IconWrapper className={className}><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></IconWrapper>;
+      const Save = ({ className }) => <IconWrapper className={className}><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></IconWrapper>;
+      const FileSpreadsheet = ({ className }) => <IconWrapper className={className}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></IconWrapper>;
+      const Plus = ({ className }) => <IconWrapper className={className}><path d="M5 12h14"/><path d="M12 5v14"/></IconWrapper>;
+      const Trash2 = ({ className }) => <IconWrapper className={className}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></IconWrapper>;
+      const Lock = ({ className }) => <IconWrapper className={className}><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></IconWrapper>;
+      const Loader = ({ className }) => <IconWrapper className={className}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></IconWrapper>;
+      const CloudCheck = ({ className }) => <IconWrapper className={className}><path d="M19 16.9A5 5 0 0 0 18 7h-1.26a8 8 0 1 0-11.62 9"/><polyline points="9 11 12 14 22 4"/></IconWrapper>;
+      const Send = ({ className }) => <IconWrapper className={className}><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></IconWrapper>;
+      const Calculator = ({ className }) => <IconWrapper className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></IconWrapper>;
+      const X = ({ className }) => <IconWrapper className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></IconWrapper>;
+      const Search = ({ className }) => <IconWrapper className={className}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></IconWrapper>;
+      const Play = ({ className }) => <IconWrapper className={className}><polygon points="5 3 19 12 5 21 5 3"/></IconWrapper>;
+
+      const NumberInput = ({ value, onChange, className, placeholder, readOnly, textAlign = 'right', isMasked = false, suffix = '' }) => {
+        const [isFocused, setIsFocused] = useState(false);
+        const displayValue = useMemo(() => { 
+          if (isMasked) return '0'; 
+          if (isFocused) return value; 
+          if (value === '' || value === null || value === undefined) return ''; 
+          const num = Number(value); 
+          return isNaN(num) ? value : num.toLocaleString() + suffix; 
+        }, [value, isFocused, isMasked, suffix]);
+        
+        return <input type="text" className={`${className} text-${textAlign} ${isMasked ? 'text-gray-300' : ''} ${readOnly ? 'input-locked' : ''}`} value={displayValue} onChange={(e) => { if (isMasked || readOnly) return; let v = e.target.value.replace(/,/g, '').replace(suffix, '').replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)); if (v === '' || !isNaN(Number(v))) onChange(v); }} onFocus={() => !readOnly && !isMasked && setIsFocused(true)} onBlur={() => setIsFocused(false)} placeholder={placeholder} readOnly={readOnly || isMasked}/>;
+      };
+
+      const ProductSearchInput = ({ value, onSelect, className, readOnly, placeholder }) => {
+        const [query, setQuery] = useState(value || '');
+        const [results, setResults] = useState([]);
+        const [showResults, setShowResults] = useState(false);
+        const [loading, setLoading] = useState(false);
+        const wrapperRef = useRef(null);
+        const textareaRef = useRef(null);
+
+        // 高さ調整関数
+        const adjustHeight = () => {
+            const el = textareaRef.current;
+            if (el) {
+                el.style.height = 'auto'; // 一旦autoにして縮小に対応
+                el.style.height = el.scrollHeight + 'px'; // 内容に合わせて高さを設定
+            }
+        };
+
+        useEffect(() => { setQuery(value || ''); }, [value]);
+        
+        // value（query）が変わったとき、および初期表示時に高さを調整
+        useLayoutEffect(() => {
+            adjustHeight();
+        }, [query]);
+
+        useEffect(() => {
+            const handleClickOutside = (event) => { if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setShowResults(false); };
+            document.addEventListener("mousedown", handleClickOutside);
+            return () => document.removeEventListener("mousedown", handleClickOutside);
+        }, []);
+
+        const handleSearch = (q) => {
+            setQuery(q);
+            if (!q) { setResults([]); setShowResults(false); return; }
+            setLoading(true);
+            setShowResults(true);
+            const timerId = setTimeout(() => {
+                if (typeof google !== 'undefined') {
+                    google.script.run.withSuccessHandler((res) => {
+                        setResults(res);
+                        setLoading(false);
+                    }).searchProducts(q);
+                } else {
+                    // Fallback for canvas preview
+                    setResults([]); 
+                    setLoading(false);
+                }
+            }, 300);
+            return () => clearTimeout(timerId);
+        };
+
+        const handleSelect = (item) => {
+            setQuery(item.name);
+            onSelect(item);
+            setShowResults(false);
+        };
+
+        return (
+            <div ref={wrapperRef} className="relative w-full h-full flex items-center">
+                <textarea 
+                    ref={textareaRef}
+                    className={`${className} resize-none overflow-hidden align-middle leading-normal py-1`} 
+                    style={{minHeight: '28px', height: 'auto'}}
+                    rows={1}
+                    value={query} 
+                    onChange={(e) => { 
+                        if(!readOnly) handleSearch(e.target.value); 
+                    }} 
+                    onFocus={() => !readOnly && query && setShowResults(true)} 
+                    placeholder={placeholder} 
+                    readOnly={readOnly} 
+                />
+                {!readOnly && showResults && (
+                    <div className="absolute z-50 left-0 top-full mt-1 w-[400px] bg-white border border-gray-300 rounded shadow-lg suggestion-list">
+                        {loading ? <div className="p-2 text-xs text-gray-500 text-center">検索中...</div> : (
+                            results.length > 0 ? (
+                                results.map((item, idx) => (
+                                    <div key={idx} onClick={() => handleSelect(item)} className="p-2 border-b border-gray-100 cursor-pointer suggestion-item text-left">
+                                        <div className="font-bold text-sm text-blue-800">{item.name}</div>
+                                        <div className="text-xs text-gray-500 flex gap-2">
+                                            <span>コード: {item.code}</span>
+                                            <span>定価: {item.standardPrice ? Number(item.standardPrice).toLocaleString() : '-'}</span>
+                                            <span>原価: {item.costPrice ? Number(item.costPrice).toLocaleString() : '-'}</span>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="p-2 text-xs text-gray-500 text-center">該当なし</div>
+                            )
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+      };
+
+      const addMonths = (dateStr, months) => { if (!dateStr) return ''; const d = new Date(dateStr); if (isNaN(d.getTime())) return ''; d.setMonth(d.getMonth() + months); return d.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/'); };
+
+      const SingleOrderSheet = ({ data, isActive, onChange, onSave, onExportExcel, saveStatus, currentUser }) => {
+        // 安全なデフォルト値を設定 (クラッシュ防止)
+        if (!data || !data.header) return <div className="p-4 text-red-500 font-bold">データ読み込みエラー: データ構造が不正です。</div>;
+        const { mode, header = {}, items = [], schedule = [], remarks = [], totals = {subtotal:0, tax:0, total:0}, paymentConditionType, paymentConditionDetail, shipmentHistory = [] } = data;
+        
+        const [shippingRowCount, setShippingRowCount] = useState(3);
+        const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null });
+        const [errors, setErrors] = useState({});
+        
+        // 技術課依頼書のUI状態管理
+        const [techReqEnabled, setTechReqEnabled] = useState(!!header.internalMemo);
+
+        const isAdmin = currentUser.role === 'admin';
+        const isProcessing = header.dataStatus === '処理中';
+        const isTemporary = header.dataStatus === 'temporary';
+        const isSalesAdmin = CONFIG.userTitle.includes('営業事務');
+        const isSubmitted = header.dataStatus === '提出済み';
+        const isLocked = isProcessing && !isAdmin && !isSalesAdmin;
+
+        useEffect(() => { let maxIdx = 3; for(let i=1; i<=10; i++) if(header[`shipDate${i}`] || header[`deliveryDate${i}`] || header[`deliveryTime${i}`] || header[`informationNo${i}`] || header[`shippingNo${i}`] || header[`deliveryMethod${i}`]) maxIdx = Math.max(maxIdx, i); setShippingRowCount(maxIdx); }, [header]);
+        
+        // ヘッダーデータの初期ロード時にtechReqEnabledを同期
+        useEffect(() => {
+            if (header.internalMemo && header.internalMemo !== "") setTechReqEnabled(true);
+        }, [header.internalMemo]);
+
+        const periodMonths = useMemo(() => { if (!header.periodStartDate || !header.periodEndDate) return null; const start = new Date(header.periodStartDate), end = new Date(header.periodEndDate); if (isNaN(start.getTime()) || isNaN(end.getTime())) return null; return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1; }, [header.periodStartDate, header.periodEndDate]);
+
+        const billingSummary = useMemo(() => {
+          const initialSubtotal = items.reduce((sum, i) => sum + (Number(i.amount) || 0), 0), initialTax = Math.floor(initialSubtotal * 0.1), initialTotal = initialSubtotal + initialTax;
+          const monthlyItems = items.filter(i => i.productName && !i.productName.includes('送料')), monthlySubtotal = monthlyItems.reduce((sum, i) => sum + (Number(i.amount) || 0), 0), monthlyTax = Math.floor(monthlySubtotal * 0.1), monthlyTotal = monthlySubtotal + monthlyTax;
+          return { initial: { subtotal: initialSubtotal, tax: initialTax, total: initialTotal }, monthly: { subtotal: monthlySubtotal, tax: monthlyTax, total: monthlyTotal } };
+        }, [items]);
+
+        const validate = () => {
+            const newErrors = {};
+            if (!header.customerName) newErrors.customerName = true;
+            if (!header.salesRepClient) newErrors.salesRepClient = true;
+            if (!header.deliveryMethod1) newErrors.deliveryMethod1 = true;
+            if (techReqEnabled && !header.internalMemo) newErrors.internalMemo = true;
+            setErrors(newErrors);
+            return Object.keys(newErrors).length === 0;
+        };
+
+        const handleSubmit = () => {
+            if (!validate()) {
+                alert("未入力の必須項目があります。\n・社名\n・先方担当者名\n・配送方法(1行目)\nなどを確認してください。\n(赤枠で表示されています)");
+                return;
+            }
+            const submittedDate = getTodayString();
+            onChange({...data, header: {...header, date: submittedDate}}); 
+            
+            setConfirmState({ 
+                isOpen: true, 
+                message: isSubmitted ? '再提出してもよろしいですか？（作成日も更新されます）' : '提出してもよろしいですか？（作成日も更新されます）', 
+                onConfirm: () => { 
+                    onSave('submit'); 
+                    setConfirmState({ isOpen: false }); 
+                }, 
+                onCancel: () => setConfirmState({ isOpen: false }) 
+            });
+        };
+
+        const generateSchedule = () => { if (isLocked) return; if (!periodMonths || periodMonths <= 0) { alert('期間が正しく設定されていません。'); return; } if(!confirm('現在の請求スケジュールを上書きして生成しますか？')) return; const newSchedule = []; for (let i = 0; i < periodMonths; i++) newSchedule.push({ id: generateId(), count: String(i + 1), billingDate: addMonths(header.periodStartDate, i), amount: billingSummary.monthly.subtotal, closingDate: '', slipNo: '', costReference: '', checkStatus: '', note: '' }); updateData({ schedule: newSchedule }); };
+        const updateData = (updates) => { if (!isLocked) onChange({ ...data, ...updates }); };
+        const updateHeader = (key, val) => {
+            if (errors[key]) setErrors({...errors, [key]: false}); 
+            updateData({ header: { ...header, [key]: val } });
+        };
+        const updatePaymentType = (val) => updateData({ paymentConditionType: val });
+        const updatePaymentDetail = (val) => updateData({ paymentConditionDetail: val });
+        
+        const updateItem = (idx, key, val) => { 
+            const row = items[idx]; 
+            if (String(row.id).includes('-') ? (isProcessing && !isAdmin) : isLocked) return; 
+            const newItems = [...items]; 
+            newItems[idx] = { ...newItems[idx], [key]: val }; 
+            
+            const qty = Number(newItems[idx].quantity) || 0;
+            const price = Number(newItems[idx].unitPrice) || 0;
+            const cost = Number(newItems[idx].costPrice) || 0; 
+            const stdPrice = Number(newItems[idx].standardPrice) || 0;
+
+            if (key === 'quantity' || key === 'unitPrice') { newItems[idx].amount = qty * price; }
+            if (key === 'quantity' || key === 'costPrice') { newItems[idx].costAmount = qty * cost; }
+            if (key === 'unitPrice' || key === 'standardPrice') {
+                 if (stdPrice && stdPrice !== 0) { newItems[idx].costRate = (price / stdPrice * 100).toFixed(1); } else { newItems[idx].costRate = ''; }
+            }
+            recalcTotals(newItems, schedule); 
+        };
+
+        const handleProductSelect = (idx, product) => {
+            const newItems = [...items];
+            const row = newItems[idx];
+            row.productName = product.name;
+            row.unit = product.unit;
+            row.standardPrice = product.standardPrice;
+            row.costPrice = product.costPrice;
+            if (!row.unitPrice) row.unitPrice = product.standardPrice;
+            const qty = Number(row.quantity) || 0;
+            const price = Number(row.unitPrice) || 0;
+            const cost = Number(row.costPrice) || 0;
+            row.amount = qty * price;
+            row.costAmount = qty * cost;
+            if (product.standardPrice && product.standardPrice != 0) { row.costRate = (price / product.standardPrice * 100).toFixed(1); } else { row.costRate = ''; }
+            recalcTotals(newItems, schedule);
+        };
+
+        const deleteItem = (idx) => { if (isLocked) return; setConfirmState({ isOpen: true, message: '明細を削除します。保存時に受注データ（スプレッドシート）からも消去されますが、よろしいですか？', onConfirm: () => { const newItems = [...items]; newItems.splice(idx, 1); recalcTotals(newItems, schedule); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) }); };
+        const updateSchedule = (idx, key, val) => { if (isLocked) return; const newSched = [...schedule]; newSched[idx] = { ...newSched[idx], [key]: val }; recalcTotals(items, newSched); };
+        
+        const recalcTotals = (newItems, newSchedule) => { 
+            const subtotal = newItems.reduce((sum, i) => sum + (Number(i.amount)||0), 0) + (newSchedule ? newSchedule.reduce((sum, s) => sum + (Number(s.amount)||0), 0) : 0); 
+            const tax = Math.floor(subtotal * 0.1); 
+            onChange({ ...data, items: newItems, schedule: newSchedule || schedule, totals: { subtotal, tax, total: subtotal + tax, totalCost: 0 } }); 
+        }
+
+        const addShippingRow = () => { if (!isLocked) setShippingRowCount(prev => prev + 1); };
+        const deleteSchedule = (idx) => { if (isLocked) return; const newSched = [...schedule]; newSched.splice(idx, 1); recalcTotals(items, newSched); };
+        const addScheduleRow = () => { if (isLocked) return; const newRow = { id: generateId(), count: '', billingDate: '', amount: 0, costReference: '', slipNo: '', closingDate: '', checkStatus: '', rowOrderNo: '', note: '' }; recalcTotals(items, [...schedule, newRow]); };
+        const addExtensionRow = () => { if (isLocked) return; const newRow = { id: generateId(), count: '延長', billingDate: '', amount: 0, costReference: '', slipNo: '', closingDate: '', checkStatus: '', rowOrderNo: '', note: '' }; recalcTotals(items, [...schedule, newRow]); };
+
+        const handleApproveAction = (stampType, stampLabel) => {
+          setConfirmState({ isOpen: true, message: `「${stampLabel}」として承認してよろしいですか？`, onConfirm: () => { if (typeof google !== 'undefined' && google.script) google.script.run.withSuccessHandler((res) => { if(res.success) updateHeader(`approval${stampType}`, { status: '済', name: stampLabel, date: "" }); }).approveOrder(header.orderNo, stampType, stampLabel); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) });
+        }
+        const canApprove = (type) => { const info = header[`approval${type}`]; if(info && info.status === '済') return false; if (type === 'Creator') return true; if (type === 'Staff') return true; if (CONFIG.userTitle === '営業担当者' && type === 'Check') return true; if (CONFIG.userTitle === '課長' && (type === 'Manager' || type === 'Director')) return true; if (CONFIG.userTitle.includes('社長') && type === 'President') return true; return false; }
+
+        const Stamp = ({ title, info, stampKey, className }) => (
+          <div className={`flex flex-col items-center justify-between border-l border-black w-14 h-20 bg-white ${className}`}>
+            <div className="w-full text-center border-b border-black text-[10px] bg-label py-1 font-bold">{title}</div>
+            <div className="flex-1 flex flex-col items-center justify-center w-full relative">
+              {info && info.status === '済' ? (
+                <div className="w-12 h-12 rounded-full border-2 border-red-600 flex items-center justify-center text-red-600 font-serif transform -rotate-12 select-none bg-white p-0.5 shadow-sm">
+                  <span className="text-[11px] font-bold leading-tight text-center">{info.name}</span>
+                </div>
+              ) : ( 
+                <div className="flex flex-col items-center">
+                  <span className="text-gray-200 text-xl font-bold">・</span>
+                  {stampKey && canApprove(stampKey) && <button onClick={() => handleApproveAction(stampKey, title)} className="mt-1 px-1 py-0.5 bg-red-50 text-red-600 border border-red-200 rounded text-[8px] hover:bg-red-100 print:hidden transition-colors">承認する</button>}
+                  {!stampKey && info && <span className="text-[10px] text-gray-500">{info.name}</span>}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
+        // gridColsClassの変更: 13カラム
+        // 操作(30), 取引日(85), 品名(auto), 数量(40), 単位(40), 単価(70), 金額(70), 製造No(70), 品名詳細(100), 手配日(85), 原価単価(70), 原価金額(70), 掛率(50)
+        const gridColsClass = 'grid-cols-[30px_85px_minmax(120px,1.5fr)_40px_40px_70px_70px_70px_minmax(100px,1fr)_85px_70px_70px_50px]';
+
+        const getStatusBadge = () => {
+            if (header.dataStatus === '提出済み') return <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold">提出済</span>;
+            if (header.dataStatus === '処理中') return <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">処理中</span>;
+            for(let i=1; i<=10; i++) if(header[`shipDate${i}`]) return <span className="bg-green-600 text-white px-2 py-1 rounded text-xs font-bold">出荷指示有</span>;
+            return <span className="bg-gray-500 text-white px-2 py-1 rounded text-xs font-bold">未提出</span>;
+        };
+
+        return (
+          <div className={`w-full max-w-[1100px] print-full ${!isActive ? 'hidden' : ''}`}>
+             <CustomConfirm isOpen={confirmState.isOpen} message={confirmState.message} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
+             <div className={`mb-6 bg-white p-4 rounded-lg shadow-md print-hidden flex justify-between items-center border-l-4 ${mode === 'rental' ? 'border-green-600' : (mode === 'communication' ? 'border-purple-600' : 'border-blue-600')}`}>
+                <div className="flex items-center space-x-4">
+                  <div className="flex flex-col"><span className={`font-bold ${mode === 'rental' ? 'text-green-700' : (mode === 'communication' ? 'text-purple-700' : 'text-blue-700')} text-lg`}>【{mode === 'rental' ? 'レンタル' : (mode === 'communication' ? '通信費' : '販売品')}】</span><span className="text-xs text-gray-500">受注No: {header.orderNo}</span></div>
+                  <div className="flex items-center space-x-2">
+                    <select value={header.dataStatus} onChange={(e) => updateHeader('dataStatus', e.target.value)} className={`bg-gray-100 text-xs font-bold p-1 rounded border border-gray-300 outline-none cursor-pointer ${isLocked ? 'pointer-events-none text-gray-500' : ''}`} disabled={isLocked}>
+                        <option value="official">通常(本番)</option>
+                        <option value="temporary">【仮】(金額0)</option>
+                        <option value="replacement">【差替】</option>
+                    </select>
+                    {getStatusBadge()}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="text-sm font-medium mr-2 flex items-center w-32 justify-end">{saveStatus === 'saving' && <span className="text-blue-600 animate-pulse flex items-center"><Loader className="w-4 h-4 mr-1 animate-spin" /> 保存中...</span>}{saveStatus === 'saved' && <span className="text-green-600 flex items-center fade-out"><CloudCheck className="w-4 h-4 mr-1" /> 保存完了</span>}</div>
+                  <button onClick={onExportExcel} className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm shadow flex items-center"><FileSpreadsheet className="w-4 h-4 mr-2" /> Excel出力</button>
+                  <button onClick={() => window.print()} className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-sm flex items-center"><Printer className="w-4 h-4 mr-2" /> 印刷</button>
+                  
+                  {!isLocked && (
+                    <>
+                        <button onClick={() => setConfirmState({ isOpen: true, message: '一時保存してもよろしいですか？', onConfirm: () => { onSave('temporary'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow font-medium text-sm flex items-center"><Save className="w-4 h-4 mr-2" /> 一時保存</button>
+                        <button onClick={handleSubmit} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-medium text-sm ml-2 flex items-center"><Send className="w-4 h-4 mr-2" /> {isSubmitted ? '再提出' : '提出'}</button>
+                    </>
+                  )}
+                  
+                  {isSalesAdmin && !isProcessing && (
+                      <button onClick={() => setConfirmState({ isOpen: true, message: 'ステータスを「処理中」に変更しますか？以降は編集がロックされます。', onConfirm: () => { onSave('process'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700 shadow font-medium text-sm ml-2 flex items-center"><Play className="w-4 h-4 mr-2" /> 処理開始</button>
+                  )}
+
+                  {isLocked && <div className="flex items-center px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-500 font-bold text-sm shadow-inner cursor-not-allowed"><Lock className="w-4 h-4 mr-2" /> ロック中</div>}
+                </div>
+              </div>
+              <div className="bg-white p-10 shadow-2xl print-full print:p-0 text-sm leading-relaxed border border-gray-300 relative min-h-[1300px]">
+                <div className="absolute top-6 right-6 text-[10px] text-gray-400 font-mono">{safeText(header.formId)}</div>
+                
+                <div className="flex justify-between items-start mb-6">
+                  <div className="flex-1 pt-2">
+                    <h1 className="text-3xl font-serif font-bold tracking-widest border-b-4 border-double border-black pb-1 inline-block mb-4">
+                      {mode === 'rental' ? 'レンタル受注兼発送依頼書' : (mode === 'communication' ? '通信費 受注兼発送依頼書' : '受注兼発送依頼書')}
+                      {isTemporary && <span className="text-red-600 ml-2">【仮】</span>}{header.dataStatus === 'replacement' && <span className="text-red-600 ml-2">【差替】</span>}{header.dataStatus === '提出済み' && <span className="text-blue-600 ml-2">【提出済】</span>}{header.dataStatus === '処理中' && <span className="text-red-600 ml-2 border border-red-600 px-1">【処理中】</span>}
+                    </h1>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center">
+                          <span className="font-bold mr-2 text-sm">受注No.</span><input className="font-mono text-2xl font-bold border-b-2 border-black bg-transparent w-48 outline-none" value={header.orderNo || ''} readOnly />
+                      </div>
+                      
+                      {/* 見積書No と 担当営業 を横並びにする */}
+                      <div className="flex items-center gap-6">
+                          <div className="flex items-center">
+                              <span className="font-bold mr-2 text-sm">見積書No.</span>
+                              <input className={`font-mono border-b border-gray-300 w-32 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.estimateNo || ''} onChange={e => updateHeader('estimateNo', e.target.value)} disabled={isLocked} />
+                          </div>
+                          <div className="flex items-center">
+                              <span className="font-bold mr-2 text-sm bg-gray-100 px-1 rounded border border-gray-300 whitespace-nowrap">担当営業</span>
+                              <input type="text" value={header.salesRep || ''} onChange={e => updateHeader('salesRep', e.target.value)} disabled={isLocked} className={`border-b border-gray-300 w-48 bg-transparent focus:outline-none ml-1 ${isLocked ? 'input-locked' : ''}`} placeholder="営業担当者名" />
+                          </div>
+                      </div>
+                      
+                      {/* 売上日などの追加情報（モード依存） */}
+                      <div className="flex items-center flex-wrap gap-6">
+                          {mode === 'sales' && (
+                              <>
+                                  <div className="flex items-center"><span className="font-bold mr-2 text-sm">売上日</span><input type="text" value={header.salesDate || ''} onChange={e => updateHeader('salesDate', e.target.value)} disabled={isLocked} className={`font-mono border-b border-gray-300 w-24 text-center bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} /></div>
+                                  <div className="flex items-center"><span className="font-bold mr-2 text-sm">伝票No</span><input type="text" value={header.headerSlipNo || ''} onChange={e => updateHeader('headerSlipNo', e.target.value)} disabled={isLocked} className={`font-mono border-b border-gray-300 w-24 text-center bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} /></div>
+                              </>
+                          )}
+                          {mode === 'rental' && (
+                              <>
+                                  <div className="flex items-center"><span className="font-bold mr-2 text-sm">レンタルID</span><input type="text" value={header.rentalId || ''} onChange={e => updateHeader('rentalId', e.target.value)} disabled={isLocked} className={`font-mono border-b border-gray-300 w-32 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} placeholder="12桁数字" /></div>
+                                  <div className="flex items-center"><span className="font-bold mr-2 text-sm">現場名</span><input type="text" value={header.siteName || ''} onChange={e => updateHeader('siteName', e.target.value)} disabled={isLocked} className={`border-b border-gray-300 w-64 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} /></div>
+                              </>
+                          )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <div className="text-xs mb-1">提出日: <span className="font-mono border-b border-gray-300 px-2">{safeText(header.date)}</span></div>
+                    <div className="flex border border-black shadow-sm">
+                      <Stamp title="作成" info={header.approvalCreator} stampKey="Creator" />
+                      <Stamp title="本社事務" info={header.approvalStaff} stampKey="Staff" />
+                      <Stamp title="営業" info={header.approvalCheck} stampKey="Check" />
+                      <Stamp title="課長" info={header.approvalManager} stampKey="Manager" />
+                      <Stamp title="部長" info={header.approvalDirector} stampKey="Director" />
+                      <Stamp title="社長" info={header.approvalPresident} stampKey="President" />
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-12 border-2 border-black mb-4">
+                  <div className="col-span-6 border-r border-black flex flex-col">
+                    <div className="border-b border-black p-3 flex-1">
+                      <div className="flex justify-between items-start mb-1">
+                          <div className="flex items-center gap-2">
+                             <div className="text-xs bg-label px-3 py-0.5 rounded font-bold border border-gray-300 w-max">社名</div>
+                             {/* 企業コードを社名のすぐ横に配置 */}
+                             <div className="text-xs font-mono text-gray-500">{header.customerCode}</div>
+                          </div>
+                      </div>
+                      <div className="px-2 flex gap-4 items-end">
+                        <div className="flex-1">
+                             <input className={`font-bold text-xl w-full outline-none bg-transparent ${isLocked ? 'input-locked' : ''} ${errors.customerName ? 'input-error' : ''}`} value={header.customerName || ''} onChange={e => updateHeader('customerName', e.target.value)} disabled={isLocked} placeholder="得意先名" />
+                             <input className={`font-bold text-sm w-full outline-none bg-transparent mt-1 ${isLocked ? 'input-locked' : ''}`} value={header.branchName || ''} onChange={e => updateHeader('branchName', e.target.value)} disabled={isLocked} placeholder="(支店名)" />
+                        </div>
+                        {/* 担当者を社名の右横（同じ行の右側）に配置 */}
+                        <div className="w-1/3 mb-1">
+                             <span className="text-xs font-bold whitespace-nowrap mr-1">担当者:</span>
+                             <input className={`w-full outline-none border-b border-gray-300 bg-transparent text-sm ${isLocked ? 'input-locked' : ''} ${errors.salesRepClient ? 'input-error' : ''}`} value={header.salesRepClient || ''} onChange={e => updateHeader('salesRepClient', e.target.value)} disabled={isLocked} placeholder="(必須)" />
+                        </div>
+                      </div>
+                      
+                      <div className="text-xs bg-label px-3 py-0.5 rounded font-bold border border-gray-300 w-max mt-4 mb-2">住所</div>
+                      <div className="px-2">
+                          <div className="flex items-center gap-1 mb-1">
+                              <span className="text-xs font-bold">〒</span>
+                              <input className={`w-24 bg-transparent outline-none border-b border-gray-300 font-mono text-sm ${isLocked ? 'input-locked' : ''}`} value={header.customerZipCode || ''} onChange={e => updateHeader('customerZipCode', e.target.value)} disabled={isLocked} />
+                          </div>
+                          <textarea className={`w-full bg-transparent outline-none resize-none text-base ${isLocked ? 'input-locked' : ''}`} rows="2" value={header.customerAddress || ''} onChange={e => updateHeader('customerAddress', e.target.value)} disabled={isLocked} placeholder="住所" />
+                          <div className="flex gap-4 text-xs font-bold text-gray-600 mt-2"><span>TEL: <input className="bg-transparent outline-none font-normal" value={header.customerTel || ''} onChange={e => updateHeader('customerTel', e.target.value)} disabled={isLocked} /></span><span>FAX: <input className="bg-transparent outline-none font-normal" value={header.customerFax || ''} onChange={e => updateHeader('customerFax', e.target.value)} disabled={isLocked} /></span></div>
+                      </div>
+                      <div className="mt-4 border-t border-gray-300 pt-1 px-2"><div className="flex justify-between items-center"><span className="text-[10px] font-bold text-gray-500">得意先備考</span><span className="text-[9px] font-bold text-red-500">※営業事務用</span></div><textarea className={`w-full bg-red-50 outline-none resize-none text-sm text-red-600 font-bold ${!isAdmin ? 'opacity-70 cursor-not-allowed' : ''}`} rows="2" value={header.customerNote || ''} onChange={e => updateHeader('customerNote', e.target.value)} disabled={!isAdmin} /></div>
+                    </div>
+                  </div>
+                  <div className="col-span-6 flex flex-col">
+                    <div className="p-3 border-b border-black flex-1">
+                       <div className="flex justify-between items-start mb-2">
+                           <div className="flex items-center gap-2">
+                               <div className="text-xs bg-label px-3 py-0.5 rounded font-bold border border-gray-300 w-max">直送先</div>
+                               <div className="text-xs font-mono text-gray-500">{header.shipCode}</div>
+                           </div>
+                           <input className={`font-bold border-b text-sm w-1/2 focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.shipRep || ''} onChange={e => updateHeader('shipRep', e.target.value)} disabled={isLocked} placeholder="直送先担当者名" />
+                       </div>
+                       <div className="px-2"><input className={`font-bold text-base border-b border-dashed w-full mb-2 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.shipName || ''} onChange={e => updateHeader('shipName', e.target.value)} disabled={isLocked} placeholder="(直送先名)" /><div className="flex flex-col gap-1 mt-1"><textarea className={`w-full bg-transparent border-b border-gray-300 outline-none resize-none text-sm ${isLocked ? 'input-locked' : ''}`} rows="2" value={header.shipAddress || ''} onChange={e => updateHeader('shipAddress', e.target.value)} disabled={isLocked} placeholder="住所" /><div className="flex items-center text-xs"><span className="font-bold mr-1">TEL:</span><input className={`bg-transparent border-b border-gray-300 outline-none flex-1 ${isLocked ? 'input-locked' : ''}`} value={header.shipTel || ''} onChange={e => updateHeader('shipTel', e.target.value)} disabled={isLocked} placeholder="00-0000-0000" /></div></div></div>
+                    </div>
+                    {(mode === 'rental' || mode === 'communication') && <div className="bg-yellow-50 border border-yellow-200 p-3 my-2 rounded-sm flex items-center gap-4"><div className="bg-label px-2 py-0.5 rounded text-[10px] font-bold border border-gray-300">期間</div><div className="flex items-center gap-2"><input type="date" className={`bg-transparent border-b border-gray-400 font-mono text-sm ${isLocked ? 'input-locked' : ''}`} value={header.periodStartDate || ''} onChange={e => updateHeader('periodStartDate', e.target.value)} disabled={isLocked} /><span>～</span><input type="date" className={`bg-transparent border-b border-gray-400 font-mono text-sm ${isLocked ? 'input-locked' : ''}`} value={header.periodEndDate || ''} onChange={e => updateHeader('periodEndDate', e.target.value)} disabled={isLocked} /></div>{periodMonths !== null && <span className="text-blue-700 font-bold text-xs whitespace-nowrap">全 {periodMonths} ヶ月</span>}<button onClick={generateSchedule} className={`bg-white border border-blue-300 text-blue-600 px-3 py-1 rounded text-xs font-bold hover:bg-blue-50 flex items-center gap-1 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isLocked}><Calculator className="w-3 h-3" /> 生成</button></div>}
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-sm">
+                      <div className="text-xs bg-label px-2 py-0.5 rounded font-bold border border-gray-300 w-max mb-2">売上先の集金条件</div>
+                      <div className="flex flex-col gap-2 px-2"><div className="flex items-center gap-4"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">締め日:</span><select value={header.closingDate ? String(header.closingDate) : ''} onChange={e => updateHeader('closingDate', e.target.value)} disabled={isLocked} className={`border-b border-gray-400 bg-transparent font-bold outline-none w-16 text-center ${isLocked ? 'input-locked' : ''}`}><option value=""></option>{[...Array(31)].map((_, i) => (<option key={i + 1} value={String(i + 1)}>{i + 1}</option>))}<option value="末日">末日</option></select></div><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払日:</span><input className={`border-b border-gray-400 bg-transparent w-24 text-center focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.paymentDate || ''} onChange={e => updateHeader('paymentDate', e.target.value)} disabled={isLocked} list="payment-dates" placeholder="(選択/入力)" /></div></div><div className="flex flex-col gap-1"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払条件:</span><select className={`bg-transparent px-1 py-0.5 text-xs font-bold outline-none border border-transparent hover:border-gray-300 rounded ${isLocked ? 'input-locked' : ''}`} value={paymentConditionType} onChange={e => updatePaymentType(e.target.value)} disabled={isLocked}><option value="従来通り">従来通り</option><option value="従来通り以外">従来通り以外</option></select></div><input type="text" className={`w-full bg-transparent px-2 py-1 text-sm outline-none border-b border-gray-300 ${isLocked ? 'input-locked' : ''}`} placeholder="(詳細を入力)" value={paymentConditionDetail} onChange={e => updatePaymentDetail(e.target.value)} disabled={isLocked} list="payment-details" /></div></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="border-2 border-black mb-4 p-2 bg-white">
+                    <div className={`grid gap-x-2 text-center text-xs font-bold text-gray-600 mb-1 ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr]'}`}>
+                      <div></div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">出荷日</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">納期</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">配送方法</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">時間帯</div>{mode !== 'rental' && <div className="bg-gray-100 rounded py-0.5 border border-gray-200">情報No</div>}<div className="bg-gray-100 rounded py-0.5 border border-gray-200">出荷No</div>
+                    </div>
+                    {[...Array(shippingRowCount)].map((_, i) => { const n = i + 1; return <div key={n} className={`grid gap-x-2 mb-1 items-center ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr]'}`}><div className="text-[10px] font-bold rounded-full bg-gray-100 w-5 h-5 flex items-center justify-center border border-gray-200">{n}</div><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`shipDate${n}`] || ''} onChange={e => updateHeader(`shipDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`deliveryDate${n}`] || ''} onChange={e => updateHeader(`deliveryDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input list="shipping-methods" className={`w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent ${n === 1 && errors.deliveryMethod1 ? 'input-error' : ''}`} value={header[`deliveryMethod${n}`] || ''} onChange={e => updateHeader(`deliveryMethod${n}`, e.target.value)} disabled={isLocked} /><select className="w-full text-center border-b border-gray-300 outline-none text-xs bg-transparent" value={header[`deliveryTime${n}`] || ''} onChange={e => updateHeader(`deliveryTime${n}`, e.target.value)} disabled={isLocked}><option value="">指定なし</option><option value="午前中">午前中</option><option value="14時～16時">14時～16時</option><option value="16時～18時">16時～18時</option><option value="18時以降">18時以降</option></select>{mode !== 'rental' && <input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`informationNo${n}`] || ''} onChange={e => updateHeader(`informationNo${n}`, e.target.value)} disabled={isLocked} />}<input className="w-full text-center border-b border-gray-300 outline-none text-sm font-mono bg-transparent" value={header[`shippingNo${n}`] || ''} onChange={e => updateHeader(`shippingNo${n}`, e.target.value)} disabled={isLocked} /></div>; })}
+                    <div className="text-center mt-1 print-hidden"><button onClick={addShippingRow} disabled={isLocked} className="text-blue-500 text-xs hover:underline"><Plus className="w-3 h-3 inline mr-1" />行を追加</button></div>
+                </div>
+                {mode !== 'communication' && <div className="border-2 border-black mb-4 flex h-16">
+                  <div className="text-xs bg-label px-2 py-2 rounded-sm font-bold border-r border-black writing-vertical-lr text-center flex items-center justify-center m-0.5">技術課<br/>依頼書</div>
+                  <div className="flex-1 p-2 flex items-center gap-4">
+                    {/* 有・無ラジオボタン */}
+                    <div className="flex flex-col gap-1 text-xs font-bold">
+                        <label className="flex items-center cursor-pointer">
+                            <input type="radio" name={`techReq_${header.orderNo}`} value="yes" className="mr-1" checked={techReqEnabled} onChange={() => { setTechReqEnabled(true); if(!header.internalMemo) updateHeader('internalMemo', ''); }} disabled={isLocked} /> 有
+                        </label>
+                        <label className="flex items-center cursor-pointer">
+                            <input type="radio" name={`techReq_${header.orderNo}`} value="no" className="mr-1" checked={!techReqEnabled} onChange={() => { setTechReqEnabled(false); updateHeader('internalMemo', ''); }} disabled={isLocked} /> 無
+                        </label>
+                    </div>
+                    {/* 入力欄（有の場合のみ入力可） */}
+                    <input type="text" list="tech-requests" value={header.internalMemo || ''} onChange={e => updateHeader('internalMemo', e.target.value)} disabled={isLocked || !techReqEnabled} className={`flex-1 text-sm bg-transparent border-b border-gray-300 p-1 focus:border-blue-500 outline-none transition-colors ${!techReqEnabled ? 'opacity-50 cursor-not-allowed bg-gray-100' : ''} ${errors.internalMemo ? 'input-error' : ''}`} placeholder="(有を選択して入力)"/>
+                  </div>
+                </div>}
+                
+
+                <div className="border-2 border-black mb-6">
+                  <div className={`grid ${gridColsClass} bg-label border-b border-black text-center font-bold py-2 text-sm`}>
+                    <div className="text-[10px] text-gray-500">操作</div>
+                    <div className="border-l border-black border-r px-1 flex items-center justify-center">取引年月日</div>
+                    <div className="border-r border-black px-1">品 名</div>
+                    <div className="border-r border-black">数量</div>
+                    <div className="border-r border-black">単位</div>
+                    <div className="border-r border-black">単価</div>
+                    <div className="border-r border-black">金額</div>
+                    <div className="border-r border-black">製造依頼№</div>
+                    <div className="border-r border-black">品名・製造№等</div>
+                    <div className="border-r border-black">手配日</div>
+                    <div className="border-r border-black">原価単価</div>
+                    <div className="border-r border-black">原価金額</div>
+                    <div className="">掛率</div>
+                  </div>
+                  {items.map((row, i) => (
+                    <div key={row.id} className={`grid ${gridColsClass} border-b border-black last:border-none text-sm min-h-[32px] group`}>
+                        <div className="flex justify-center items-center">
+                            <button onClick={() => deleteItem(i)} className={`opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 print:hidden ${isLocked ? 'hidden' : ''}`}><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                        <div className="border-l border-black border-r p-1 flex items-center">
+                            <input className={`w-full text-center bg-transparent outline-none text-xs font-mono ${items[i].shipped ? 'text-green-600 font-bold' : ''}`} value={row.transactionDate || ''} onChange={e => updateItem(i, 'transactionDate', e.target.value)} placeholder="MM/DD" readOnly={isLocked} />
+                        </div>
+                        <div className="border-r border-black p-1 pl-3 h-full flex items-center">
+                            <ProductSearchInput className={`w-full bg-transparent outline-none font-medium ${isLocked ? 'text-gray-500' : ''}`} value={row.productName || ''} onSelect={(item) => handleProductSelect(i, item)} readOnly={isLocked} placeholder="" />
+                        </div>
+                        <div className="border-r border-black p-1 flex items-center">
+                            <NumberInput className="w-full bg-transparent outline-none font-mono" value={row.quantity || ''} onChange={v => updateItem(i, 'quantity', v)} readOnly={isLocked} />
+                        </div>
+                        <div className="border-r border-black p-1 flex items-center justify-center">
+                            <input className="w-full text-center bg-transparent outline-none" value={row.unit || ''} onChange={e => updateItem(i, 'unit', e.target.value)} readOnly={isLocked} />
+                        </div>
+                        <div className="border-r border-black p-1 flex items-center">
+                            <NumberInput className="w-full bg-transparent outline-none font-mono" value={row.unitPrice || ''} onChange={v => updateItem(i, 'unitPrice', v)} readOnly={isLocked} isMasked={isTemporary} />
+                        </div>
+                        <div className="border-r border-black p-1 px-2 text-right font-mono font-bold flex items-center justify-end">
+                            {isTemporary ? '0' : (row.amount ? Number(row.amount).toLocaleString() : '')}
+                        </div>
+                        <div className="border-r border-black p-1 flex items-center">
+                            <input className="w-full text-center bg-transparent outline-none text-xs" value={row.manufacturingNo || ''} onChange={e => updateItem(i, 'manufacturingNo', e.target.value)} readOnly={isLocked} />
+                        </div>
+                        <div className="border-r border-black px-2 text-xs truncate flex items-center">
+                            <input className="w-full bg-transparent outline-none" value={row.note || ''} onChange={e => updateItem(i, 'note', e.target.value)} readOnly={isLocked} />
+                        </div>
+                        <div className="border-r border-black p-1 flex items-center">
+                            <input className="w-full text-center bg-transparent outline-none text-xs font-mono" value={row.arrangementDate || ''} onChange={e => updateItem(i, 'arrangementDate', e.target.value)} placeholder="MM/DD" readOnly={isLocked} />
+                        </div>
+                        <div className="border-r border-black p-1 flex items-center">
+                            <NumberInput className="w-full bg-transparent outline-none font-mono text-xs text-gray-500" value={row.costPrice || ''} onChange={v => updateItem(i, 'costPrice', v)} readOnly={isLocked} />
+                        </div>
+                        <div className="border-r border-black p-1 flex items-center">
+                            <NumberInput className="w-full bg-transparent outline-none font-mono text-xs text-gray-500" value={row.costAmount || ''} onChange={v => updateItem(i, 'costAmount', v)} readOnly={isLocked} />
+                        </div>
+                        <div className="p-1 text-center font-mono text-xs flex items-center justify-center">
+                             {row.costRate ? `${row.costRate}%` : '-'}
+                        </div>
+                    </div>
+                  ))}
+                  
+                  {mode === 'sales' && (
+                    <div className={`grid ${gridColsClass} border-b border-black text-sm min-h-[32px] items-center bg-gray-50`}>
+                       <div></div> {/* 操作 */}
+                       <div className="border-l border-black border-r"></div> {/* 日付 */}
+                       <div className="border-r border-black p-1 pl-3 flex items-center justify-end text-xs font-bold text-gray-700">仕入れ品合計</div> {/* 品名 */}
+                       <div className="border-r border-black"></div> {/* 数量 */}
+                       <div className="border-r border-black"></div> {/* 単位 */}
+                       <div className="border-r border-black"></div> {/* 単価 */}
+                       <div className="border-r border-black"></div> {/* 金額 */}
+                       <div className="border-r border-black"></div> {/* 製造No */}
+                       <div className="border-r border-black"></div> {/* 品名詳細 */}
+                       <div className="border-r border-black"></div> {/* 手配日 */}
+                       <div className="border-r border-black"></div> {/* 原価単価 */}
+                       <div className="border-r border-black p-1 flex items-center"> {/* 原価金額 */}
+                          <NumberInput className="w-full bg-transparent outline-none font-mono text-xs text-gray-900 font-bold" value={header.totalCost} onChange={(v) => updateHeader('totalCost', v)} readOnly={isLocked} isMasked={isTemporary} />
+                       </div>
+                       <div></div> {/* 掛率 */}
+                    </div>
+                  )}
+
+                  {[...Array(Math.max(0, 5 - items.length))].map((_, i) => <div key={`empty-${i}`} className={`grid ${gridColsClass} border-b border-black last:border-none text-sm min-h-[32px]`}><div/><div className="border-l border-black border-r"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black font-mono"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div/></div>)}
+                  
+                  {mode === 'sales' ? 
+                    <div className="border-t border-black bg-gray-50 text-sm">
+                        <div className="p-2 flex justify-end items-center pr-8 space-x-6">
+                            <div className="flex items-center text-gray-900">
+                                <span className="text-xs font-bold mr-2">原価合計</span>
+                                <span className="font-mono text-sm font-bold">{isTemporary ? '0' : (header.totalCost ? Number(header.totalCost).toLocaleString() : '0')}</span>
+                            </div>
+                            <div className="flex items-center">
+                                <span className="text-xs font-bold mr-2">小計</span>
+                                <span className="font-mono text-base">{isTemporary ? '0' : totals.subtotal.toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center">
+                                <span className="text-xs font-bold mr-2">消費税</span>
+                                <span className="font-mono text-base">{isTemporary ? '0' : totals.tax.toLocaleString()}</span>
+                            </div>
+                            <div className="flex items-center">
+                                <span className="text-sm font-bold mr-2">合計</span>
+                                <span className="font-mono text-xl font-bold">{isTemporary ? '0' : totals.total.toLocaleString()} 円</span>
+                            </div>
+                        </div>
+                    </div> : 
+                    <div className="border-t border-black bg-yellow-50 grid grid-cols-1 divide-y divide-black">
+                        <div className="p-2 flex items-center justify-end gap-6 pr-4">
+                            <div className="text-xs font-bold mr-2">【初回ご請求】</div>
+                            <div className="flex items-center gap-2 text-xs"><span>小計</span><span className="font-mono">{isTemporary ? '0' : billingSummary.initial.subtotal.toLocaleString()}</span></div>
+                            <div className="flex items-center gap-2 text-xs"><span>消費税</span><span className="font-mono">{isTemporary ? '0' : billingSummary.initial.tax.toLocaleString()}</span></div>
+                            <div className="flex items-center gap-2 font-bold text-sm"><span>合計</span><span className="font-mono">{isTemporary ? '0' : billingSummary.initial.total.toLocaleString()} 円</span></div>
+                        </div>
+                        <div className="p-2 flex items-center justify-end gap-6 pr-4">
+                            <div className="flex items-center mr-2"><span className="text-[9px] text-gray-500 mr-1">※送料除く</span><span className="text-xs font-bold">【2回目以降 (月額)】</span></div>
+                            <div className="flex items-center gap-2 text-xs"><span>小計</span><span className="font-mono">{isTemporary ? '0' : billingSummary.monthly.subtotal.toLocaleString()}</span></div>
+                            <div className="flex items-center gap-2 text-xs"><span>消費税</span><span className="font-mono">{isTemporary ? '0' : billingSummary.monthly.tax.toLocaleString()}</span></div>
+                            <div className="flex items-center gap-2 font-bold text-sm"><span>合計</span><span className="font-mono">{isTemporary ? '0' : billingSummary.monthly.total.toLocaleString()} 円</span></div>
+                        </div>
+                    </div>
+                  }
+                  <div className="p-1 bg-white print-hidden text-center"><button onClick={() => { if(!isLocked) onChange({...data, items: [...items, { id: generateId(), productName: '', transactionDate: '', quantity: '', unit: '', unitPrice: '', amount: 0, costAmount: 0 }]})}} disabled={isLocked} className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center justify-center w-full"><Plus className="w-3 h-3 mr-1" /> 明細を追加</button></div>
+                </div>
+                {(mode === 'rental' || mode === 'communication') && (
+                  <div className="border-2 border-black mb-6">
+                    <div className="grid grid-cols-[30px_3rem_6rem_6rem_6rem_4rem_3rem_5rem_1fr_3rem] bg-label border-b border-black text-center text-[10px] font-bold py-2"><div>操作</div><div>回数</div><div>売上日</div><div>請求金額</div><div>原価</div><div>伝票NO</div><div>締め日</div><div>受注NO</div><div>備考</div><div>チェック</div></div>
+                    {schedule.map((row, i) => <div key={row.id} className={`border-b border-black last:border-none text-sm min-h-[32px] group items-center ${row.count === '延長' ? 'bg-pink-100 grid grid-cols-[30px_3rem_1fr_3rem]' : 'grid grid-cols-[30px_3rem_6rem_6rem_6rem_4rem_3rem_5rem_1fr_3rem]'}`}><div className="flex justify-center h-full items-center border-r border-black"><button onClick={() => deleteSchedule(i)} className={`opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 ${isLocked ? 'hidden' : ''}`}><Trash2 className="w-4 h-4" /></button></div><div className="border-r border-black text-center h-full flex items-center justify-center font-bold text-xs">{row.count}</div>{row.count === '延長' ? <><div className="px-2 flex items-center h-full border-r border-black"><input className="w-full bg-transparent outline-none" value={row.note || ''} onChange={e => updateSchedule(i, 'note', e.target.value)} disabled={isLocked} placeholder="例: 2025/10/01〜..." /></div><div className="p-1"></div></> : <><div className="border-r border-black p-1"><input className="w-full text-center bg-transparent outline-none font-mono" value={row.billingDate || ''} onChange={e => updateSchedule(i, 'billingDate', e.target.value)} disabled={isLocked} /></div><div className="border-r border-black p-1"><NumberInput className="w-full bg-transparent outline-none font-mono" value={row.amount || ''} onChange={v => updateSchedule(i, 'amount', v)} readOnly={isLocked} isMasked={isTemporary} /></div><div className="border-r border-black p-1"><NumberInput className="w-full bg-transparent outline-none font-mono text-xs text-gray-500" value={row.costReference || ''} onChange={v => updateSchedule(i, 'costReference', v)} readOnly={isLocked} /></div><div className="border-r border-black p-1"><input className="w-full text-center bg-transparent outline-none font-mono" value={row.slipNo || ''} onChange={e => updateSchedule(i, 'slipNo', e.target.value)} disabled={isLocked} /></div><div className="border-r border-black p-1"><input className="w-full text-center bg-transparent outline-none" value={row.closingDate || ''} onChange={e => updateSchedule(i, 'closingDate', e.target.value)} disabled={isLocked} /></div><div className="border-r border-black p-1"><input className="w-full text-center bg-transparent outline-none font-mono" value={row.rowOrderNo || ''} onChange={e => updateSchedule(i, 'rowOrderNo', e.target.value)} disabled={isLocked} /></div><div className="border-r border-black p-1"><input className="w-full bg-transparent outline-none text-xs" value={row.note || ''} onChange={e => updateSchedule(i, 'note', e.target.value)} disabled={isLocked} /></div><div className="p-1"><input className="w-full bg-transparent outline-none text-xs text-center" value={row.checkStatus || ''} onChange={e => updateSchedule(i, 'checkStatus', e.target.value)} disabled={isLocked} /></div></>}</div>)}
+                    <div className="p-1 bg-white print-hidden text-center flex justify-center gap-4"><button onClick={addScheduleRow} disabled={isLocked} className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center"><Plus className="w-3 h-3 mr-1" /> 請求スケジュールを追加</button><button onClick={addExtensionRow} disabled={isLocked} className="text-pink-600 hover:text-pink-800 text-xs font-bold flex items-center"><Plus className="w-3 h-3 mr-1" /> 延長</button></div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4 mt-4 print:block">
+                    <div className="border border-black p-3">
+                        <div className="text-xs font-bold border-b border-black mb-2 bg-label px-2 py-1">出荷実績</div>
+                        <div className="overflow-y-auto max-h-48">
+                            <table className="w-full text-xs text-left border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-100 border-b border-gray-200">
+                                        <th className="p-1 font-bold whitespace-nowrap">出荷日</th>
+                                        <th className="p-1 font-bold whitespace-nowrap">配送方法</th>
+                                        <th className="p-1 font-bold whitespace-nowrap">伝票No/送り状No</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {shipmentHistory && shipmentHistory.length > 0 ? (
+                                        shipmentHistory.map((h, idx) => (
+                                            <tr key={idx} className="border-b border-gray-100 last:border-none">
+                                                <td className="p-1 font-mono">{h.date}</td>
+                                                <td className="p-1">{h.carrier}</td>
+                                                <td className="p-1 font-mono">{h.slipNo}</td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr><td colSpan="3" className="p-2 text-center text-gray-400">出荷データなし</td></tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div className="border border-black p-3">
+                        <div className="text-xs font-bold border-b border-black mb-2 flex justify-between items-center bg-label px-2 py-1"><span>備考 / 履歴</span><button onClick={() => { if(!isLocked) onChange({...data, remarks: [...remarks, { id: generateId(), category: 'その他', content: '', date: new Date().toISOString().split('T')[0].replace(/-/g, '/'), status: '', mailSent: '' }]})}} disabled={isLocked} className="text-blue-600 flex items-center text-[10px] border border-blue-200 px-1 bg-white rounded"><Plus className="w-3 h-3 mr-1" /> 追加</button></div>
+                        <div className="overflow-y-auto max-h-48 space-y-1">{remarks.map((rmk, idx) => <div key={rmk.id} className="grid grid-cols-[80px_1fr_100px] gap-2 text-xs border-b border-gray-100 pb-1 items-center"><span className="bg-gray-100 rounded text-center py-0.5 text-[10px] font-bold">{rmk.category}</span><input className="w-full bg-transparent outline-none" value={rmk.content || ''} onChange={e => { const newRemarks = [...remarks]; newRemarks[idx].content = e.target.value; onChange({...data, remarks: newRemarks}); }} disabled={isLocked} /><span className="text-right text-gray-400 font-mono">{rmk.date}</span></div>)}</div>
+                    </div>
+                </div>
+              </div>
+          </div>
+        );
+      };
+
+      function App() {
+        const [tabs, setTabs] = useState([]), [activeTabId, setActiveTabId] = useState(null), [saveStatus, setSaveStatus] = useState('idle'), [loading, setLoading] = useState(true), [addMenuOpen, setAddMenuOpen] = useState(false);
+        useEffect(() => { 
+            if (typeof google !== 'undefined') {
+                google.script.run.withSuccessHandler((data) => { 
+                    const loader = document.getElementById('loading'); 
+                    if (loader) loader.style.display = 'none'; 
+                    const tid = generateId(); 
+                    // データがnullの場合の対策
+                    if (!data) {
+                        alert("データの取得に失敗しました");
+                        setLoading(false);
+                        return;
+                    }
+                    setTabs([{ id: tid, title: data.mode === 'rental' ? 'レンタル' : (data.mode === 'communication' ? '通信' : '販売'), mode: data.mode || 'sales', data }]); 
+                    setActiveTabId(tid); 
+                    setLoading(false); 
+                }).withFailureHandler((error) => {
+                    document.getElementById('loading').style.display = 'none';
+                    alert("サーバーエラー: " + error);
+                    setLoading(false);
+                }).getOrderData(CONFIG.initialOrderNo, CONFIG.initialSummaryCode); 
+            } else {
+                // デモモード（Canvasプレビュー用）
+                console.log("Running in demo mode");
+                setTimeout(() => {
+                    const mockHeader = { 
+                        formId: "DEMO-FORM-001", orderNo: CONFIG.initialOrderNo, date: getTodayString(), 
+                        customerCode: "CUST001", customerName: "株式会社デモ商事", branchName: "本社", 
+                        approvalCreator: { status: '済', name: '山田' }, approvalCheck: { status: '', name: '' },
+                        approvalStaff: { status: '済', name: '佐藤' },
+                        dataStatus: 'official', deliveryMethod1: 'ヤマト(PM)',
+                        shipDate1: '2023/10/01', deliveryDate1: '2023/10/02',
+                        shipCode: 'SHIP001', headerSlipNo: 'SLIP123'
+                    };
+                    const mockData = { 
+                        mode: 'sales', header: mockHeader, items: [{id:'1', productName:'テスト商品', quantity:1, unit:'個', unitPrice:1000, amount:1000}], 
+                        schedule: [], remarks: [], totals: {subtotal:1000, tax:100, total:1100},
+                        shipmentHistory: [
+                            { date: "2023/10/01", carrier: "ヤマト運輸", slipNo: "1234-5678-9012" },
+                            { date: "2023/10/05", carrier: "佐川急便", slipNo: "9876-5432-1098" }
+                        ]
+                    };
+                    const tid = generateId();
+                    setTabs([{ id: tid, title: '販売(デモ)', mode: 'sales', data: mockData }]);
+                    setActiveTabId(tid);
+                    setLoading(false);
+                    const loader = document.getElementById('loading'); 
+                    if (loader) loader.style.display = 'none'; 
+                }, 1000);
+            }
+        }, []);
+        const addNewTab = (newMode) => { const currentTab = tabs.find(t => t.id === activeTabId), newId = generateId(), newTitle = newMode === 'rental' ? 'レンタル' : (newMode === 'communication' ? '通信' : '販売'), newData = JSON.parse(JSON.stringify(currentTab.data)); newData.mode = newMode; newData.header.dataStatus = 'official'; setTabs([...tabs, { id: newId, title: newTitle, mode: newMode, data: newData }]); setActiveTabId(newId); setAddMenuOpen(false); };
+        const removeTab = (tabId) => { if(!confirm('このタブを削除してもよろしいですか？')) return; const newTabs = tabs.filter(t => t.id !== tabId); setTabs(newTabs); if (newTabs.length > 0 && activeTabId === tabId) setActiveTabId(newTabs[0].id); };
+        const handleExportExcel = (tabData) => { setSaveStatus('saving'); google.script.run.withSuccessHandler((res) => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 3000); if (res.success) { if (res.driveUrl) window.open(res.driveUrl, '_blank'); else if (res.url) window.open(res.url, '_blank'); } else alert('出力に失敗しました: ' + (res.message || '不明なエラー')); }).withFailureHandler((err) => { setSaveStatus('idle'); alert('エラー: ' + err); }).generateOrderSheet(tabData); };
+        const handleSave = (type) => { 
+            const tab = tabs.find(t => t.id === activeTabId); 
+            if(!tab) return; 
+            setSaveStatus('saving'); 
+            
+            // ステータス分岐ロジックの変更
+            let finalStatus = tab.data.header.dataStatus;
+            if (type === 'submit') finalStatus = '提出済み';
+            if (type === 'process') finalStatus = '処理中';
+            if (type === 'temporary') finalStatus = 'temporary';
+
+            const finalData = { ...tab.data, header: { ...tab.data.header, dataStatus: finalStatus }, mode: tab.mode, userName: CONFIG.userName }; 
+            google.script.run.withSuccessHandler(() => { setSaveStatus('saved'); setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, data: finalData } : t)); setTimeout(() => setSaveStatus('idle'), 3000); }).saveOrderData(finalData); 
+        };
+        if (loading) return null;
+        return (
+          <div className="min-h-screen bg-gray-200 p-6 flex flex-col items-center pb-40">
+            <div id="tab-bar" className="w-full max-w-[1100px] flex items-end space-x-1 mb-0 print-hidden">
+               {tabs.map(tab => <div key={tab.id} onClick={() => setActiveTabId(tab.id)} className={`px-4 py-2 rounded-t-lg font-bold text-sm cursor-pointer border-t border-x relative group transition-all flex items-center ${activeTabId === tab.id ? 'tab-active shadow-sm z-10' : 'tab-inactive hover:bg-gray-100'}`} style={{ height: '42px' }}><span className="mr-2">{tab.title}</span><button onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button></div>)}
+               <div className="relative"><button onClick={() => setAddMenuOpen(!addMenuOpen)} className="px-3 py-2 bg-gray-600 text-white rounded-t-lg hover:bg-gray-700 transition-colors flex items-center h-[42px] font-bold text-xs"><Plus className="w-4 h-4 mr-1" /> 追加</button>{addMenuOpen && <div className="absolute top-10 left-0 bg-white shadow-xl rounded border border-gray-300 w-32 z-50 overflow-hidden"><button onClick={() => addNewTab('sales')} className="block w-full text-left px-4 py-2 hover:bg-blue-50 text-sm">販売</button><button onClick={() => addNewTab('rental')} className="block w-full text-left px-4 py-2 hover:bg-green-50 text-sm">レンタル</button><button onClick={() => addNewTab('communication')} className="block w-full text-left px-4 py-2 hover:bg-purple-50 text-sm">通信費</button></div>}</div>
+            </div>
+            {tabs.map(tab => <SingleOrderSheet key={tab.id} data={tab.data} isActive={activeTabId === tab.id} currentUser={{role: CONFIG.userRole}} onChange={(newData) => setTabs(tabs.map(t => t.id === tab.id ? {...t, data: newData} : t))} onSave={handleSave} onExportExcel={() => handleExportExcel(tab.data)} saveStatus={saveStatus} />)}
+          </div>
+        );
+      }
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
