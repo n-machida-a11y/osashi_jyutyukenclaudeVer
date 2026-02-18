@@ -743,7 +743,7 @@
         }, []);
         const addNewTab = (newMode) => { const currentTab = tabs.find(t => t.id === activeTabId), newId = generateId(), newTitle = newMode === 'rental' ? 'レンタル' : (newMode === 'communication' ? '通信' : '販売'), newData = JSON.parse(JSON.stringify(currentTab.data)); newData.mode = newMode; newData.header.dataStatus = 'official'; setTabs([...tabs, { id: newId, title: newTitle, mode: newMode, data: newData }]); setActiveTabId(newId); setAddMenuOpen(false); };
         const removeTab = (tabId) => { if(!confirm('このタブを削除してもよろしいですか？')) return; const newTabs = tabs.filter(t => t.id !== tabId); setTabs(newTabs); if (newTabs.length > 0 && activeTabId === tabId) setActiveTabId(newTabs[0].id); };
-        const handleExportExcel = (tabData) => { setSaveStatus('saving'); google.script.run.withSuccessHandler((res) => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 3000); if (res.success) { if (res.driveUrl) window.open(res.driveUrl, '_blank'); else if (res.url) window.open(res.url, '_blank'); } else alert('出力に失敗しました: ' + (res.message || '不明なエラー')); }).withFailureHandler((err) => { setSaveStatus('idle'); alert('エラー: ' + err); }).generateOrderSheet(tabData); };
+        const handleExportExcel = (tabData) => { setSaveStatus('saving'); google.script.run.withSuccessHandler((res) => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 1500); if (res.success) { if (res.driveUrl) window.open(res.driveUrl, '_blank'); else if (res.url) window.open(res.url, '_blank'); } else alert('出力に失敗しました: ' + (res.message || '不明なエラー')); }).withFailureHandler((err) => { setSaveStatus('idle'); alert('エラー: ' + err); }).generateOrderSheet(tabData); };
         const handleSave = (type) => { 
             const tab = tabs.find(t => t.id === activeTabId); 
             if(!tab) return; 
@@ -757,7 +757,7 @@
             if (type === 'reedit') finalStatus = 'official';
 
             const finalData = { ...tab.data, header: { ...tab.data.header, dataStatus: finalStatus }, mode: tab.mode, userName: CONFIG.userName }; 
-            google.script.run.withSuccessHandler(() => { setSaveStatus('saved'); setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, data: finalData } : t)); setTimeout(() => setSaveStatus('idle'), 3000); }).saveOrderData(finalData); 
+            google.script.run.withSuccessHandler(() => { setSaveStatus('saved'); setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, data: finalData } : t)); setTimeout(() => setSaveStatus('idle'), 1500); }).saveOrderData(finalData); 
         };
         if (loading) return null;
         return (
