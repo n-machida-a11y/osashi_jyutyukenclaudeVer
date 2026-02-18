@@ -205,7 +205,7 @@ function getOrderData(orderNo, summaryCode) {
 
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const staffMap = getStaffMap(ss), customerNoteMap = getCustomerNoteMap(ss), historyMap = getHistoryMap(ss, orderNo), customerMasterMap = getCustomerMasterMap(ss);
+    const staffMap = getStaffMap(ss), customerNoteMap = getCustomerNoteMap(ss), historyMap = getHistoryMap(ss, orderNo), customerMasterMap = getCustomerMasterMap(ss), shipmentHistoryList = getShipmentHistoryList(ss, orderNo);
     const productMasterMap = getProductMasterMap(ss); // 商品マスタの標準価格マップを取得
     
     const sheet = ss.getSheetByName(SHEETS.HEADER);
@@ -262,7 +262,7 @@ function getOrderData(orderNo, summaryCode) {
     const tax = Math.floor(subtotal * 0.1); 
     const totalCost = 0; // 自動計算しない（初期値なし）
 
-    return { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost } };
+    return { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost }, shipmentHistory: shipmentHistoryList };
   } catch (e) { return createMockData(orderNo, mode, [], "エラー: " + e.message); }
 }
 
@@ -286,6 +286,33 @@ function getHistoryMap(ss, orderNo) {
     for (let i = 1; i < values.length; i++) { if (orderNoIdx !== -1 && cleanId(values[i][orderNoIdx]) !== String(orderNo)) continue; map[String(values[i][idIdx]).trim()] = { shipped: !!values[i][dateIdx] }; }
   } catch (e) {}
   return map;
+}
+
+function getShipmentHistoryList(ss, orderNo) {
+  const list = [];
+  try {
+    const sheet = ss.getSheetByName(SHEETS.HISTORY);
+    if (!sheet) return list;
+    const values = sheet.getDataRange().getValues();
+    const headers = values[0].map(h => String(h).trim());
+    const orderNoIdx = headers.indexOf("受注No");
+    const dateIdx = headers.indexOf("出荷日");
+    const carrierIdx = headers.indexOf("配送方法");
+    const slipNoIdx = headers.indexOf("伝票No");
+    const instructedIdx = headers.indexOf("出荷指示済");
+    for (let i = 1; i < values.length; i++) {
+      if (orderNoIdx !== -1 && cleanId(values[i][orderNoIdx]) !== String(orderNo)) continue;
+      const date = values[i][dateIdx];
+      if (!date) continue;
+      list.push({
+        date: formatDate(date),
+        carrier: carrierIdx !== -1 ? String(values[i][carrierIdx] || '') : '',
+        slipNo: slipNoIdx !== -1 ? String(values[i][slipNoIdx] || '') : '',
+        instructed: instructedIdx !== -1 ? !!values[i][instructedIdx] : false
+      });
+    }
+  } catch (e) {}
+  return list;
 }
 
 function getProductMasterMap(ss) {
