@@ -248,7 +248,7 @@
 
         const billingSummary = useMemo(() => {
           const initialSubtotal = items.reduce((sum, i) => sum + (Number(i.amount) || 0), 0), initialTax = Math.floor(initialSubtotal * 0.1), initialTotal = initialSubtotal + initialTax;
-          const monthlyItems = items.filter(i => i.productName && !i.productName.includes('送料')), monthlySubtotal = monthlyItems.reduce((sum, i) => sum + (Number(i.amount) || 0), 0), monthlyTax = Math.floor(monthlySubtotal * 0.1), monthlyTotal = monthlySubtotal + monthlyTax;
+          const monthlyItems = items.filter(i => i.productName && !String(i.productName).includes('送料')), monthlySubtotal = monthlyItems.reduce((sum, i) => sum + (Number(i.amount) || 0), 0), monthlyTax = Math.floor(monthlySubtotal * 0.1), monthlyTotal = monthlySubtotal + monthlyTax;
           return { initial: { subtotal: initialSubtotal, tax: initialTax, total: initialTotal }, monthly: { subtotal: monthlySubtotal, tax: monthlyTax, total: monthlyTotal } };
         }, [items]);
 
