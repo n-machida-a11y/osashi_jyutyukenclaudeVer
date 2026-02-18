@@ -35,6 +35,7 @@ function doGet(e) {
   template.userRole = (staffInfo.role === "管理者" || staffInfo.role === "admin") ? "admin" : "sales";
   template.userTitle = staffInfo.title || "";
   template.userName = staffInfo.name || paramUserName || "担当者";
+  template.enableEmailSend = ENABLE_EMAIL_SEND ? "true" : "false";
 
   return template.evaluate()
     .setTitle('受注兼発送依頼書')
@@ -583,8 +584,9 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     shipTel: getVal('会社TEL'), 
     shipRep: getVal('直送先担当者名') || "", 
     
-    salesRepInternalMain: salesRepName, 
+    salesRepInternalMain: salesRepName,
     salesRep: salesRepName, // 担当者コードから引いた名前をセット
+    staffCode: getVal('担当者コード'), // メール送信先特定用
     salesRepClient: getVal('先方担当者名'),
     internalMemo: getVal('技術課依頼'), // 技術課依頼書のバインディング追加
     
@@ -747,43 +749,43 @@ function getStaffEmails() {
 function sendRemarkEmail(params) {
   try {
     const { orderNo, remarkId, remarkContent, remarkDate, ccEmails, userName } = params;
-
-    // 受注データから担当者コードを取得
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const headerSheet = ss.getSheetByName(SHEETS.HEADER);
-    const headerData = headerSheet.getDataRange().getValues();
-    const hRow = headerData[0].map(h => String(h).trim());
-    const orderNoIdx = hRow.indexOf('受注No');
-    const staffCodeIdx = hRow.indexOf('担当者コード');
-    let targetStaffCode = '';
-    for (let i = 1; i < headerData.length; i++) {
-      if (cleanId(headerData[i][orderNoIdx]) === String(orderNo)) {
-        targetStaffCode = String(headerData[i][staffCodeIdx] || '').trim();
-        break;
-      }
-    }
-    if (!targetStaffCode) return { success: false, message: '担当者コードが見つかりません' };
 
-    // 担当者マスタからメールアドレスを取得
-    const staffSheet = ss.getSheetByName(SHEETS.STAFF);
-    const staffData = staffSheet.getDataRange().getValues();
-    const sHeaders = staffData[0].map(h => String(h).trim());
-    const sCodeIdx = sHeaders.indexOf('担当者コード');
-    const sEmailIdx = sHeaders.indexOf('メールアドレス');
-    if (sEmailIdx === -1) return { success: false, message: '担当者マスタにメールアドレス列がありません' };
-    let toEmail = '';
-    for (let i = 1; i < staffData.length; i++) {
-      if (cleanId(staffData[i][sCodeIdx]) === cleanId(targetStaffCode)) {
-        toEmail = String(staffData[i][sEmailIdx] || '').trim();
-        break;
-      }
-    }
-    if (!toEmail) return { success: false, message: '送信先メールアドレスが見つかりません' };
-
-    // メール送信（ENABLE_EMAIL_SEND = true のときのみ実際に送信）
-    const subject = '【要確認】受注備考コメント';
-    const body = `受注No：${orderNo}にコメントがありましたので\nご確認をお願いいたします。\n\n備考No\n${remarkId}\n\n備考\n${remarkContent || ''}\n\n日時\n${remarkDate || ''}\n\nよろしくお願いいたします。`;
+    // メール送信（ENABLE_EMAIL_SEND = true のときのみ。falseの場合は記録のみ行う）
     if (ENABLE_EMAIL_SEND) {
+      // 受注データから担当者コードを取得
+      const headerSheet = ss.getSheetByName(SHEETS.HEADER);
+      const headerData = headerSheet.getDataRange().getValues();
+      const hRow = headerData[0].map(h => String(h).trim());
+      const orderNoIdx = hRow.indexOf('受注No');
+      const staffCodeIdx = hRow.indexOf('担当者コード');
+      let targetStaffCode = '';
+      for (let i = 1; i < headerData.length; i++) {
+        if (cleanId(headerData[i][orderNoIdx]) === String(orderNo)) {
+          targetStaffCode = String(headerData[i][staffCodeIdx] || '').trim();
+          break;
+        }
+      }
+      if (!targetStaffCode) return { success: false, message: '担当者コードが見つかりません' };
+
+      // 担当者マスタからメールアドレスを取得
+      const staffSheet = ss.getSheetByName(SHEETS.STAFF);
+      const staffData = staffSheet.getDataRange().getValues();
+      const sHeaders = staffData[0].map(h => String(h).trim());
+      const sCodeIdx = sHeaders.indexOf('担当者コード');
+      const sEmailIdx = sHeaders.indexOf('メールアドレス');
+      if (sEmailIdx === -1) return { success: false, message: '担当者マスタにメールアドレス列がありません' };
+      let toEmail = '';
+      for (let i = 1; i < staffData.length; i++) {
+        if (cleanId(staffData[i][sCodeIdx]) === cleanId(targetStaffCode)) {
+          toEmail = String(staffData[i][sEmailIdx] || '').trim();
+          break;
+        }
+      }
+      if (!toEmail) return { success: false, message: '送信先メールアドレスが見つかりません' };
+
+      const subject = '【要確認】受注備考コメント';
+      const body = `受注No：${orderNo}にコメントがありましたので\nご確認をお願いいたします。\n\n備考No\n${remarkId}\n\n備考\n${remarkContent || ''}\n\n日時\n${remarkDate || ''}\n\nよろしくお願いいたします。`;
       const mailOptions = {};
       if (ccEmails && ccEmails.length > 0) mailOptions.cc = ccEmails.join(',');
       GmailApp.sendEmail(toEmail, subject, body, mailOptions);

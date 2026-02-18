@@ -40,7 +40,7 @@
         <div class="text-lg font-bold">システムを起動中...</div>
       </div>
     </div>
-    <div id="gas-data" style="display:none" data-order-no="<?= initialOrderNo ?>" data-summary-code="<?= initialSummaryCode ?>" data-user-role="<?= userRole ?>" data-user-title="<?= userTitle ?>" data-user-name="<?= userName ?>"></div>
+    <div id="gas-data" style="display:none" data-order-no="<?= initialOrderNo ?>" data-summary-code="<?= initialSummaryCode ?>" data-user-role="<?= userRole ?>" data-user-title="<?= userTitle ?>" data-user-name="<?= userName ?>" data-enable-email-send="<?= enableEmailSend ?>"></div>
     <datalist id="closing-dates"><option value="10日"/><option value="20日"/><option value="末日"/></datalist>
     <datalist id="payment-dates"><option value="当月末"/><option value="翌月10日"/><option value="翌月20日"/><option value="翌月末"/><option value="翌々月10日"/></datalist>
     <datalist id="shipping-methods"><option value="※工場出荷無し"/><option value="ヤマト(PM)"/><option value="出荷庫準備"/><option value="レターパック"/><option value="航空便"/><option value="ヤマト(AM)"/><option value="佐川"/></datalist>
@@ -75,7 +75,7 @@
       const safeText = (val) => (val === undefined || val === null) ? '' : String(val);
       const gasDataEl = document.getElementById('gas-data');
       // デフォルト受注Noを 250969 に設定
-      const CONFIG = { initialOrderNo: gasDataEl?.dataset.orderNo || "250969", initialSummaryCode: gasDataEl?.dataset.summaryCode || "", userRole: gasDataEl?.dataset.userRole || "sales", userTitle: gasDataEl?.dataset.userTitle || "", userName: gasDataEl?.dataset.userName || "担当者" };
+      const CONFIG = { initialOrderNo: gasDataEl?.dataset.orderNo || "250969", initialSummaryCode: gasDataEl?.dataset.summaryCode || "", userRole: gasDataEl?.dataset.userRole || "sales", userTitle: gasDataEl?.dataset.userTitle || "", userName: gasDataEl?.dataset.userName || "担当者", enableEmailSend: gasDataEl?.dataset.enableEmailSend === "true" };
       const getTodayString = () => new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/');
       const getDateTimeString = () => { const n = new Date(); return `${n.getFullYear()}/${String(n.getMonth()+1).padStart(2,'0')}/${String(n.getDate()).padStart(2,'0')} ${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}`; };
 
@@ -339,10 +339,14 @@
         const handleRemarkEmail = (idx) => {
           const rmk = remarks[idx];
           if (rmk.mailSent === '済') return;
-          setConfirmState({ isOpen: true, message: `メールを送信してよろしいですか？\n\n受注No: ${header.orderNo}\n備考: ${rmk.content || '(内容なし)'}`, onConfirm: () => {
+          const recipient = staffEmails.find(s => s.code === header.staffCode);
+          const recipientText = recipient ? `${recipient.name}（${recipient.email}）` : header.salesRep ? `${header.salesRep}（メールアドレス未登録）` : '（担当者不明）';
+          const ccList = rmk.additionalCC ? rmk.additionalCC.split(',').filter(Boolean) : [];
+          const ccText = ccList.length > 0 ? `\nCC: ${ccList.map(e => { const s = staffEmails.find(x => x.email === e); return s ? `${s.name}（${e}）` : e; }).join(', ')}` : '';
+          const disableNote = !CONFIG.enableEmailSend ? '\n\n⚠️ ※実際には送付されません（送信機能オフ中）' : '';
+          setConfirmState({ isOpen: true, message: `メールを送信してよろしいですか？\n\n受注No: ${header.orderNo}\n送信先: ${recipientText}${ccText}\n備考: ${rmk.content || '(内容なし)'}${disableNote}`, onConfirm: () => {
             setConfirmState({ isOpen: false });
             setSendingEmailIdx(idx);
-            const ccList = rmk.additionalCC ? rmk.additionalCC.split(',').filter(Boolean) : [];
             if (typeof google !== 'undefined' && google.script) {
               google.script.run.withSuccessHandler((res) => { setSendingEmailIdx(null); if (res.success) { const newRemarks = [...remarks]; newRemarks[idx] = { ...newRemarks[idx], mailSent: '済' }; onChange({ ...data, remarks: newRemarks }); } else { alert('メール送信エラー: ' + (res.message || '不明なエラー')); } }).withFailureHandler((err) => { setSendingEmailIdx(null); alert('エラー: ' + err); }).sendRemarkEmail({ orderNo: header.orderNo, remarkId: rmk.id, remarkContent: rmk.content, remarkDate: rmk.date, ccEmails: ccList, userName: CONFIG.userName });
             }
