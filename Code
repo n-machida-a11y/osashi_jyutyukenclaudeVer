@@ -444,6 +444,8 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
           ships[`informationNo${n}`] = item.informationNo || "";
           ships[`shippingNo${n}`] = item.shippingNo || "";
           ships[`deliveryMethod${n}`] = item.deliveryMethod || "";
+          ships[`shipConfirmName${n}`] = item.confirmName || "";
+          ships[`shipConfirmDate${n}`] = item.confirmDate || "";
         });
         loadedFromJson = true;
       }
@@ -612,7 +614,9 @@ function reverseMapHeader(h) {
             deliveryTime: deliveryTime || "",
             informationNo: informationNo || "",
             shippingNo: shippingNo || "",
-            deliveryMethod: deliveryMethod || ""
+            deliveryMethod: deliveryMethod || "",
+            confirmName: h[`shipConfirmName${i}`] || "",
+            confirmDate: h[`shipConfirmDate${i}`] || ""
         });
     }
   }

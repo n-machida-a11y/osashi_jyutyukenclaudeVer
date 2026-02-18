@@ -347,13 +347,13 @@
         const handleApproveAction = (stampType, stampLabel) => {
           setConfirmState({ isOpen: true, message: `「${stampLabel}」として承認してよろしいですか？`, onConfirm: () => { if (typeof google !== 'undefined' && google.script) google.script.run.withSuccessHandler((res) => { if(res.success) updateHeader(`approval${stampType}`, { status: '済', name: stampLabel, date: "" }); }).approveOrder(header.orderNo, stampType, stampLabel); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) });
         }
-        const handleShipmentInstructionConfirm = () => {
-          if (header.shipmentInstructionConfirm?.status === '済') return;
+        const handleRowShipConfirm = (n) => {
+          if (header[`shipConfirmName${n}`]) return;
           setConfirmState({
             isOpen: true,
-            message: `「${CONFIG.userName}」として出荷指示確認を記録しますか？`,
+            message: `${n}行目の出荷指示を「${CONFIG.userName}」として確認しますか？`,
             onConfirm: () => {
-              updateHeader('shipmentInstructionConfirm', { status: '済', name: CONFIG.userName, date: getTodayString() });
+              onChange({...data, header: {...header, [`shipConfirmName${n}`]: CONFIG.userName, [`shipConfirmDate${n}`]: getTodayString()}});
               setConfirmState({ isOpen: false });
             },
             onCancel: () => setConfirmState({ isOpen: false })
@@ -536,26 +536,11 @@
                   </div>
                 </div>
                 <div className="border-2 border-black mb-4 p-2 bg-white">
-                    <div className={`grid gap-x-2 text-center text-xs font-bold text-gray-600 mb-1 ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr]'}`}>
-                      <div></div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">出荷日</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">納期</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">配送方法</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">時間帯</div>{mode !== 'rental' && <div className="bg-gray-100 rounded py-0.5 border border-gray-200">情報No</div>}<div className="bg-gray-100 rounded py-0.5 border border-gray-200">出荷No</div>
+                    <div className={`grid gap-x-2 text-center text-xs font-bold text-gray-600 mb-1 ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr_1fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_1fr]'}`}>
+                      <div></div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">出荷日</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">納期</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">配送方法</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">時間帯</div>{mode !== 'rental' && <div className="bg-gray-100 rounded py-0.5 border border-gray-200">情報No</div>}<div className="bg-gray-100 rounded py-0.5 border border-gray-200">出荷No</div><div className="bg-orange-50 rounded py-0.5 border border-orange-200 text-orange-600">出荷指示確認</div>
                     </div>
-                    {[...Array(shippingRowCount)].map((_, i) => { const n = i + 1; return <div key={n} className={`grid gap-x-2 mb-1 items-center ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr]'}`}><div className="text-[10px] font-bold rounded-full bg-gray-100 w-5 h-5 flex items-center justify-center border border-gray-200">{n}</div><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`shipDate${n}`] || ''} onChange={e => updateHeader(`shipDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`deliveryDate${n}`] || ''} onChange={e => updateHeader(`deliveryDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input list="shipping-methods" className={`w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent ${n === 1 && errors.deliveryMethod1 ? 'input-error' : ''}`} value={header[`deliveryMethod${n}`] || ''} onChange={e => updateHeader(`deliveryMethod${n}`, e.target.value)} disabled={isLocked} /><select className="w-full text-center border-b border-gray-300 outline-none text-xs bg-transparent" value={header[`deliveryTime${n}`] || ''} onChange={e => updateHeader(`deliveryTime${n}`, e.target.value)} disabled={isLocked}><option value="">指定なし</option><option value="午前中">午前中</option><option value="14時～16時">14時～16時</option><option value="16時～18時">16時～18時</option><option value="18時以降">18時以降</option></select>{mode !== 'rental' && <input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`informationNo${n}`] || ''} onChange={e => updateHeader(`informationNo${n}`, e.target.value)} disabled={isLocked} />}<input className="w-full text-center border-b border-gray-300 outline-none text-sm font-mono bg-transparent" value={header[`shippingNo${n}`] || ''} onChange={e => updateHeader(`shippingNo${n}`, e.target.value)} disabled={isLocked} /></div>; })}
+                    {[...Array(shippingRowCount)].map((_, i) => { const n = i + 1; return <div key={n} className={`grid gap-x-2 mb-1 items-center ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr_1fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_1fr]'}`}><div className="text-[10px] font-bold rounded-full bg-gray-100 w-5 h-5 flex items-center justify-center border border-gray-200">{n}</div><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`shipDate${n}`] || ''} onChange={e => updateHeader(`shipDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`deliveryDate${n}`] || ''} onChange={e => updateHeader(`deliveryDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input list="shipping-methods" className={`w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent ${n === 1 && errors.deliveryMethod1 ? 'input-error' : ''}`} value={header[`deliveryMethod${n}`] || ''} onChange={e => updateHeader(`deliveryMethod${n}`, e.target.value)} disabled={isLocked} /><select className="w-full text-center border-b border-gray-300 outline-none text-xs bg-transparent" value={header[`deliveryTime${n}`] || ''} onChange={e => updateHeader(`deliveryTime${n}`, e.target.value)} disabled={isLocked}><option value="">指定なし</option><option value="午前中">午前中</option><option value="14時～16時">14時～16時</option><option value="16時～18時">16時～18時</option><option value="18時以降">18時以降</option></select>{mode !== 'rental' && <input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`informationNo${n}`] || ''} onChange={e => updateHeader(`informationNo${n}`, e.target.value)} disabled={isLocked} />}<input className="w-full text-center border-b border-gray-300 outline-none text-sm font-mono bg-transparent" value={header[`shippingNo${n}`] || ''} onChange={e => updateHeader(`shippingNo${n}`, e.target.value)} disabled={isLocked} /><div className="flex flex-col items-center justify-center min-h-[24px]">{header[`shipConfirmName${n}`] ? (<div className="text-center border border-orange-300 rounded px-1 py-0.5 bg-orange-50 w-full"><div className="text-[9px] font-bold text-orange-600 leading-tight truncate">{header[`shipConfirmName${n}`]}</div><div className="text-[8px] text-orange-400 font-mono leading-tight">{header[`shipConfirmDate${n}`]}</div></div>) : (header[`shipDate${n}`] && !isLocked ? (<button onClick={() => handleRowShipConfirm(n)} className="print:hidden text-[9px] px-1.5 py-0.5 bg-white border border-orange-200 text-orange-500 rounded hover:bg-orange-50 font-bold whitespace-nowrap w-full">確認する</button>) : null)}</div></div>; })}
                     <div className="text-center mt-1 print-hidden"><button onClick={addShippingRow} disabled={isLocked} className="text-blue-500 text-xs hover:underline"><Plus className="w-3 h-3 inline mr-1" />行を追加</button></div>
-                    <div className="mt-2 pt-2 border-t border-gray-200 flex items-center justify-end gap-3 pr-1">
-                      <span className="text-[10px] font-bold text-gray-500 whitespace-nowrap">出荷指示確認:</span>
-                      {header.shipmentInstructionConfirm?.status === '済' ? (
-                        <div className="flex items-center gap-2 border-2 border-orange-400 rounded px-3 py-1 bg-orange-50 shadow-sm">
-                          <span className="text-orange-600 font-bold text-xs whitespace-nowrap">✓ 出荷指示済</span>
-                          <span className="font-bold text-sm text-orange-700 font-serif">{header.shipmentInstructionConfirm.name}</span>
-                          <span className="text-[10px] text-orange-400 font-mono">{header.shipmentInstructionConfirm.date}</span>
-                        </div>
-                      ) : (
-                        <>
-                          <span className="text-gray-300 text-[10px]">未確認</span>
-                          <button onClick={handleShipmentInstructionConfirm} disabled={isLocked} className="print:hidden text-xs px-3 py-1 bg-white border border-orange-300 text-orange-500 rounded hover:bg-orange-50 font-bold disabled:opacity-40">出荷指示を確認する</button>
-                        </>
-                      )}
-                    </div>
                 </div>
                 {mode !== 'communication' && <div className="border-2 border-black mb-4 flex h-16">
                   <div className="text-xs bg-label px-2 py-2 rounded-sm font-bold border-r border-black writing-vertical-lr text-center flex items-center justify-center m-0.5">技術課<br/>依頼書</div>
@@ -702,42 +687,7 @@
                     <div className="p-1 bg-white print-hidden text-center flex justify-center gap-4"><button onClick={addScheduleRow} disabled={isLocked} className="text-blue-600 hover:text-blue-800 text-xs font-bold flex items-center"><Plus className="w-3 h-3 mr-1" /> 請求スケジュールを追加</button><button onClick={addExtensionRow} disabled={isLocked} className="text-pink-600 hover:text-pink-800 text-xs font-bold flex items-center"><Plus className="w-3 h-3 mr-1" /> 延長</button></div>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-4 mt-4 print:block">
-                    <div className="border border-black p-3">
-                        <div className="text-xs font-bold border-b border-black mb-2 bg-label px-2 py-1">出荷実績</div>
-                        <div className="overflow-y-auto max-h-48">
-                            <table className="w-full text-xs text-left border-collapse">
-                                <thead>
-                                    <tr className="bg-gray-100 border-b border-gray-300">
-                                        <th className="p-1.5 font-bold whitespace-nowrap">出荷日</th>
-                                        <th className="p-1.5 font-bold whitespace-nowrap">配送方法</th>
-                                        <th className="p-1.5 font-bold whitespace-nowrap">伝票No/送り状No</th>
-                                        <th className="p-1.5 font-bold whitespace-nowrap text-center">出荷指示</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {shipmentHistory && shipmentHistory.length > 0 ? (
-                                        shipmentHistory.map((h, idx) => (
-                                            <tr key={idx} className={`border-b border-gray-100 last:border-none hover:bg-blue-50 transition-colors ${idx % 2 === 1 ? 'bg-gray-50' : ''}`}>
-                                                <td className="p-1.5 font-mono">{h.date}</td>
-                                                <td className="p-1.5">{h.carrier}</td>
-                                                <td className="p-1.5 font-mono">{h.slipNo}</td>
-                                                <td className="p-1.5 text-center">
-                                                    {h.instructed
-                                                        ? <span className="bg-green-100 text-green-700 border border-green-300 rounded px-1.5 py-0.5 font-bold text-[10px] whitespace-nowrap">指示済</span>
-                                                        : <span className="bg-gray-100 text-gray-400 border border-gray-200 rounded px-1.5 py-0.5 font-bold text-[10px] whitespace-nowrap">未指示</span>
-                                                    }
-                                                </td>
-                                            </tr>
-                                        ))
-                                    ) : (
-                                        <tr><td colSpan="4" className="p-2 text-center text-gray-400">出荷データなし</td></tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                    
+                <div className="mt-4">
                     <div className="border border-black p-3">
                         <div className="text-xs font-bold border-b border-black mb-2 flex justify-between items-center bg-label px-2 py-1"><span>備考 / 履歴</span><button onClick={() => { if(!isLocked) onChange({...data, remarks: [...remarks, { id: generateId(), category: 'その他', content: '', date: new Date().toISOString().split('T')[0].replace(/-/g, '/'), status: '', mailSent: '' }]})}} disabled={isLocked} className="text-blue-600 flex items-center text-[10px] border border-blue-200 px-1 bg-white rounded"><Plus className="w-3 h-3 mr-1" /> 追加</button></div>
                         <div className="overflow-y-auto max-h-48 space-y-1">{remarks.map((rmk, idx) => <div key={rmk.id} className="grid grid-cols-[80px_1fr_100px] gap-2 text-xs border-b border-gray-100 pb-1 items-center"><span className="bg-gray-100 rounded text-center py-0.5 text-[10px] font-bold">{rmk.category}</span><input className="w-full bg-transparent outline-none" value={rmk.content || ''} onChange={e => { const newRemarks = [...remarks]; newRemarks[idx].content = e.target.value; onChange({...data, remarks: newRemarks}); }} disabled={isLocked} /><span className="text-right text-gray-400 font-mono">{rmk.date}</span></div>)}</div>
