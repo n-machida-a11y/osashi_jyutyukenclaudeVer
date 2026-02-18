@@ -201,11 +201,17 @@ function safeSet(sheet, a1Notation, value) { try { if (value != null) sheet.getR
 
 function getOrderData(orderNo, summaryCode) {
   orderNo = cleanId(orderNo);
-  summaryCode = cleanId(summaryCode); 
+  summaryCode = cleanId(summaryCode);
   var mode = 'sales';
   if (String(summaryCode) === '65') mode = 'rental';
   if (String(summaryCode) === '83') mode = 'communication';
   if (!orderNo) return createMockData(orderNo, mode, [], "受注Noが空です");
+
+  // キャッシュチェック（60秒）
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'od_' + orderNo;
+  const cached = cache.get(cacheKey);
+  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
 
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -266,12 +272,15 @@ function getOrderData(orderNo, summaryCode) {
     const tax = Math.floor(subtotal * 0.1); 
     const totalCost = 0; // 自動計算しない（初期値なし）
 
-    return { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost }, shipmentHistory: shipmentHistoryList };
+    const result = { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost }, shipmentHistory: shipmentHistoryList };
+    try { cache.put(cacheKey, JSON.stringify(result), 60); } catch(e) {}
+    return result;
   } catch (e) { return createMockData(orderNo, mode, [], "エラー: " + e.message); }
 }
 
 function approveOrder(orderNo, stampType, approverName) {
   try {
+    try { CacheService.getScriptCache().remove('od_' + cleanId(orderNo)); } catch(e) {}
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const colMap = { 'Creator': '作成者承認', 'Staff': '本社事務承認', 'Check': '営業担当者承認', 'Manager': '課長承認', 'Director': '部長承認', 'President': '社長承認' };
     const colName = colMap[stampType];
@@ -320,26 +329,40 @@ function getShipmentHistoryList(ss, orderNo) {
 }
 
 function getProductMasterMap(ss) {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('productMaster');
+  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
   const map = {};
   try {
     const sheet = ss.getSheetByName(SHEETS.PRODUCT_MASTER);
     if (!sheet) return {};
     const values = sheet.getDataRange().getValues();
-    // A=0, B=1(商品名), Q=16(標準価格)
     for (let i = 1; i < values.length; i++) {
       const name = String(values[i][1]).trim();
-      if (name) map[name] = values[i][16]; 
+      if (name) map[name] = values[i][16];
     }
   } catch(e) {}
+  try { cache.put('productMaster', JSON.stringify(map), 600); } catch(e) {}
   return map;
 }
 
-function getStaffMap(ss) { const map = {}; try { const sheet = ss.getSheetByName(SHEETS.STAFF), values = sheet.getDataRange().getValues(), codeIdx = values[0].indexOf("担当者コード"), nameIdx = values[0].indexOf("担当者名"); for (let i = 1; i < values.length; i++) map[String(values[i][codeIdx]).trim()] = values[i][nameIdx]; } catch (e) {} return map; }
+function getStaffMap(ss) {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('staffMap');
+  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+  const map = {};
+  try { const sheet = ss.getSheetByName(SHEETS.STAFF), values = sheet.getDataRange().getValues(), codeIdx = values[0].indexOf("担当者コード"), nameIdx = values[0].indexOf("担当者名"); for (let i = 1; i < values.length; i++) map[String(values[i][codeIdx]).trim()] = values[i][nameIdx]; } catch (e) {}
+  try { cache.put('staffMap', JSON.stringify(map), 600); } catch(e) {}
+  return map;
+}
 function getCustomerNoteMap(ss) { const map = {}; try { const sheet = ss.getSheetByName(SHEETS.CUSTOMER), values = sheet.getDataRange().getValues(), codeIdx = values[0].indexOf("得意先コード"), noteIdx = values[0].indexOf("得意先備考"); for (let i = 1; i < values.length; i++) map[String(values[i][codeIdx]).trim()] = values[i][noteIdx]; } catch(e) {} return map; }
 
-function getCustomerMasterMap(ss) { 
-  const map = {}; 
-  try { 
+function getCustomerMasterMap(ss) {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get('customerMaster');
+  if (cached) { try { return JSON.parse(cached); } catch(e) {} }
+  const map = {};
+  try {
     const sheet = ss.getSheetByName(SHEETS.CUSTOMER);
     const values = sheet.getDataRange().getValues();
     const headers = values[0].map(h => String(h).trim());
@@ -371,9 +394,10 @@ function getCustomerMasterMap(ss) {
           fax: faxIdx !== -1 ? values[i][faxIdx] : ""
         }; 
       }
-    } 
-  } catch(e) {} 
-  return map; 
+    }
+  } catch(e) {}
+  try { cache.put('customerMaster', JSON.stringify(map), 600); } catch(e) {}
+  return map;
 }
 
 function createMockData(orderNo, mode, logs, msg) { return { success: false, mode: mode, header: { formId: "SYSTEM", title: msg, orderNo: orderNo || "---", dataStatus: 'official' }, items: [], schedule: [], remarks: [], totals: {subtotal:0, tax:0, total:0} }; }
@@ -382,6 +406,7 @@ function saveOrderData(saveData) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const orderNo = cleanId(saveData.header.orderNo);
+    try { CacheService.getScriptCache().remove('od_' + orderNo); } catch(e) {}
     if (!orderNo) return { success: false, message: "受注Noなし" };
 
     // ヘッダー保存
@@ -800,11 +825,11 @@ function sendRemarkEmail(params) {
       const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm');
       const hHeaders = histSheet.getRange(1, 1, 1, histSheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
       const newRow = hHeaders.map(h => {
+        if (h === '受注備考履歴ID') return Utilities.getUuid();
         if (h === '受注備考ID') return remarkId;
+        if (h === '処理日時') return now;
         if (h === '処理担当者') return userName;
         if (h === '処理内容') return 'メール送付';
-        if (h === '受注No') return orderNo;
-        if (h === '日時') return now;
         return '';
       });
       histSheet.appendRow(newRow);
