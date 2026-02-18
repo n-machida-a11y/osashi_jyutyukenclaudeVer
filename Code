@@ -527,9 +527,15 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     periodStartDate: getVal('期間開始'), 
     periodEndDate: getVal('期間終了'), 
     
+    shipmentInstructionConfirm: {
+      status: getVal('出荷指示確認者') ? '済' : '',
+      name: getVal('出荷指示確認者') || '',
+      date: getVal('出荷指示確認日') ? formatDate(row['出荷指示確認日']) : ''
+    },
+
     approvalStaff: getStamp('本社事務承認', '本社事務'), // 入力者から本社事務承認へ変更
-    
-    approvalCreator: getStamp('作成者承認', '作成'), 
+
+    approvalCreator: getStamp('作成者承認', '作成'),
     approvalCheck: getStamp('営業担当者承認', '確認'), 
     approvalManager: getStamp('課長承認', '課長'), 
     approvalDirector: getStamp('部長承認', '部長'), 
@@ -582,6 +588,8 @@ function reverseMapHeader(h) {
     '課長承認': h.approvalManager?.status === '済' ? '済' : '', 
     '部長承認': h.approvalDirector?.status === '済' ? '済' : '', 
     '社長承認': h.approvalPresident?.status === '済' ? '済' : '',
+    '出荷指示確認者': h.shipmentInstructionConfirm?.name || '',
+    '出荷指示確認日': h.shipmentInstructionConfirm?.date || '',
     '出荷配送詳細(JSON)': '' // 初期化
   };
   
