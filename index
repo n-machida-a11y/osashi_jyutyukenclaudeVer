@@ -423,24 +423,23 @@
                       {isTemporary && <span className="text-red-600 ml-2">【仮】</span>}{header.dataStatus === 'replacement' && <span className="text-red-600 ml-2">【差替】</span>}{header.dataStatus === '提出済み' && <span className="text-blue-600 ml-2">【提出済】</span>}{header.dataStatus === '処理中' && <span className="text-red-600 ml-2 border border-red-600 px-1">【処理中】</span>}
                     </h1>
                     <div className="flex flex-col gap-2">
-                      <div className="flex items-center">
-                          <span className="font-bold mr-2 text-sm">受注No.</span><input className="font-mono text-2xl font-bold border-b-2 border-black bg-transparent w-48 outline-none" value={header.orderNo || ''} readOnly />
-                      </div>
-                      
-                      {/* 見積書No と 担当営業 を横並びにする */}
-                      <div className="flex items-center gap-6">
+                      {/* 1行目: 受注No・見積書No・担当営業 */}
+                      <div className="flex items-center gap-4 flex-wrap">
+                          <div className="flex items-center">
+                              <span className="font-bold mr-2 text-sm">受注No.</span>
+                              <input className="font-mono text-xl font-bold border-b-2 border-black bg-transparent w-36 outline-none" value={header.orderNo || ''} readOnly />
+                          </div>
                           <div className="flex items-center">
                               <span className="font-bold mr-2 text-sm">見積書No.</span>
-                              <input className={`font-mono border-b border-gray-300 w-32 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.estimateNo || ''} onChange={e => updateHeader('estimateNo', e.target.value)} disabled={isLocked} />
+                              <input className={`font-mono border-b border-gray-300 w-28 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.estimateNo || ''} onChange={e => updateHeader('estimateNo', e.target.value)} disabled={isLocked} />
                           </div>
                           <div className="flex items-center">
                               <span className="font-bold mr-2 text-sm bg-gray-100 px-1 rounded border border-gray-300 whitespace-nowrap">担当営業</span>
-                              <input type="text" value={header.salesRep || ''} onChange={e => updateHeader('salesRep', e.target.value)} disabled={isLocked} className={`border-b border-gray-300 w-48 bg-transparent focus:outline-none ml-1 ${isLocked ? 'input-locked' : ''}`} placeholder="営業担当者名" />
+                              <input type="text" value={header.salesRep || ''} onChange={e => updateHeader('salesRep', e.target.value)} disabled={isLocked} className={`border-b border-gray-300 w-40 bg-transparent focus:outline-none ml-1 ${isLocked ? 'input-locked' : ''}`} placeholder="営業担当者名" />
                           </div>
                       </div>
-                      
-                      {/* 売上日などの追加情報（モード依存） */}
-                      <div className="flex items-center flex-wrap gap-6">
+                      {/* 2行目: モード依存の追加情報 */}
+                      <div className="flex items-center gap-4 flex-wrap">
                           {mode === 'sales' && (
                               <>
                                   <div className="flex items-center"><span className="font-bold mr-2 text-sm">売上日</span><input type="text" value={header.salesDate || ''} onChange={e => updateHeader('salesDate', e.target.value)} disabled={isLocked} className={`font-mono border-b border-gray-300 w-24 text-center bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} /></div>
