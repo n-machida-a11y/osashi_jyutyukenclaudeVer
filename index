@@ -499,9 +499,9 @@
                              <input className={`font-bold text-sm w-full outline-none bg-transparent mt-1 ${isLocked ? 'input-locked' : ''}`} value={header.branchName || ''} onChange={e => updateHeader('branchName', e.target.value)} disabled={isLocked} placeholder="(支店名)" />
                         </div>
                         {/* 担当者を社名の右横（同じ行の右側）に配置 */}
-                        <div className="w-1/3 mb-1">
-                             <span className="text-xs font-bold whitespace-nowrap mr-1">担当者:</span>
-                             <input className={`w-full outline-none border-b border-gray-300 bg-transparent text-sm ${isLocked ? 'input-locked' : ''} ${errors.salesRepClient ? 'input-error' : ''}`} value={header.salesRepClient || ''} onChange={e => updateHeader('salesRepClient', e.target.value)} disabled={isLocked} placeholder="(必須)" />
+                        <div className="w-1/3 mb-1 flex items-center gap-1">
+                             <span className="text-xs font-bold whitespace-nowrap">担当者:</span>
+                             <input className={`flex-1 outline-none border-b border-gray-300 bg-transparent text-sm ${isLocked ? 'input-locked' : ''} ${errors.salesRepClient ? 'input-error' : ''}`} value={header.salesRepClient || ''} onChange={e => updateHeader('salesRepClient', e.target.value)} disabled={isLocked} placeholder="(必須)" />
                         </div>
                       </div>
                       
@@ -712,7 +712,8 @@
                         setLoading(false);
                         return;
                     }
-                    setTabs([{ id: tid, title: data.mode === 'rental' ? 'レンタル' : (data.mode === 'communication' ? '通信' : '販売'), mode: data.mode || 'sales', data }]); 
+                    const tabData = (!data.header.salesRep && CONFIG.userName && CONFIG.userName !== '担当者') ? {...data, header: {...data.header, salesRep: CONFIG.userName}} : data;
+                    setTabs([{ id: tid, title: data.mode === 'rental' ? 'レンタル' : (data.mode === 'communication' ? '通信' : '販売'), mode: data.mode || 'sales', data: tabData }]);
                     setActiveTabId(tid); 
                     setLoading(false); 
                 }).withFailureHandler((error) => {
