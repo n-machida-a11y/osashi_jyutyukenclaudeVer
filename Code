@@ -379,38 +379,98 @@ function saveOrderData(saveData) {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const orderNo = cleanId(saveData.header.orderNo);
     if (!orderNo) return { success: false, message: "受注Noなし" };
-    const itemSheet = ss.getSheetByName(SHEETS.ITEMS), itemData = itemSheet.getDataRange().getValues(), itemH = itemData[0].map(h => String(h).trim()), idIdx = itemH.indexOf("受注明細No"), orderIdx = itemH.indexOf("受注No"), qtyIdx = itemH.indexOf("数量");
-    const submittedIds = saveData.items.map(item => String(item.id));
-    for (let i = itemData.length - 1; i >= 1; i--) { if (cleanId(itemData[i][orderIdx]) === orderNo) { if (!submittedIds.includes(String(itemData[i][idIdx])) && Number(itemData[i][qtyIdx]) > 0) itemSheet.deleteRow(i + 1); } }
-    
-    // ヘッダー情報の保存
+
+    // ヘッダー保存
     updateSheet(ss, SHEETS.HEADER, '受注No', orderNo, reverseMapHeader(saveData.header));
-    
-    saveData.items.forEach(item => { 
-        if(!item.id || String(item.id).startsWith('pad-')) return; 
-        updateOrAddRow(ss, SHEETS.ITEMS, '受注明細No', item.id, { 
-            '受注No': orderNo, 
-            '受注明細No': item.id, 
-            '商品名': item.productName, 
-            '数量': item.quantity, 
-            '単位': item.unit, 
-            '単価': item.unitPrice, 
-            '受注金額': item.amount, 
-            '原価金額': item.costAmount, 
-            '品名・製造№等': item.note, // UI上は「品名・製造№等」だがDB上は「備考」
-            '種別': saveData.mode, 
-            '取引年月日': item.transactionDate,
-            '原価単価': item.costPrice,
-            '掛率': item.costRate,
-            // 新規項目
-            '製造依頼№': item.manufacturingNo, 
-            '手配日': item.arrangementDate
-        }); 
-    });
-    saveData.schedule.forEach(sch => { if(!sch.id || String(sch.id).startsWith('pad-')) return; updateOrAddRow(ss, SHEETS.SCHEDULE, '請求ID', sch.id, { '受注No': orderNo, '請求ID': sch.id, '回数': sch.count, '請求売上日': sch.billingDate, '請求金額': sch.amount, '原価金額': sch.costReference, '伝票No': sch.slipNo, '締め日': sch.closingDate, 'チェック状況': sch.checkStatus, '種別': saveData.mode, '行受注No': sch.rowOrderNo, '備考': sch.note }); });
-    if (saveData.header.customerCode) updateOrAddRow(ss, SHEETS.CUSTOMER, '得意先コード', saveData.header.customerCode, { '得意先コード': saveData.header.customerCode, '得意先備考': saveData.header.customerNote });
+
+    // 明細バッチ保存（シート読み込みを最小化）
+    const validItems = saveData.items.filter(i => i.id && !String(i.id).startsWith('pad-'));
+    _batchSaveRows(ss, SHEETS.ITEMS, '受注明細No', '受注No', '数量', orderNo, validItems, item => ({
+      '受注No': orderNo, '受注明細No': item.id, '商品名': item.productName,
+      '数量': item.quantity, '単位': item.unit, '単価': item.unitPrice,
+      '受注金額': item.amount, '原価金額': item.costAmount,
+      '品名・製造№等': item.note, '種別': saveData.mode,
+      '取引年月日': item.transactionDate, '原価単価': item.costPrice,
+      '掛率': item.costRate, '製造依頼№': item.manufacturingNo,
+      '手配日': item.arrangementDate
+    }));
+
+    // スケジュールバッチ保存
+    const validSchedule = saveData.schedule.filter(s => s.id && !String(s.id).startsWith('pad-'));
+    _batchSaveRows(ss, SHEETS.SCHEDULE, '請求ID', '受注No', null, orderNo, validSchedule, sch => ({
+      '受注No': orderNo, '請求ID': sch.id, '回数': sch.count,
+      '請求売上日': sch.billingDate, '請求金額': sch.amount,
+      '原価金額': sch.costReference, '伝票No': sch.slipNo,
+      '締め日': sch.closingDate, 'チェック状況': sch.checkStatus,
+      '種別': saveData.mode, '行受注No': sch.rowOrderNo, '備考': sch.note
+    }));
+
+    // 得意先備考
+    if (saveData.header.customerCode) {
+      updateOrAddRow(ss, SHEETS.CUSTOMER, '得意先コード', saveData.header.customerCode,
+        { '得意先コード': saveData.header.customerCode, '得意先備考': saveData.header.customerNote });
+    }
     return { success: true, message: "保存しました" };
   } catch(e) { return { success: false, message: "保存エラー: " + e.toString() }; }
+}
+
+// シートを2回だけ読み込み（削除後に1回）、新規行を一括追加するバッチ保存
+function _batchSaveRows(ss, sheetName, keyCol, orderCol, qtyCol, orderNo, dataRows, mapper) {
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return;
+
+  // 1回目読み込み：削除対象の特定
+  const raw = sheet.getDataRange().getValues();
+  const headers = raw[0].map(h => String(h).trim());
+  const keyIdx = headers.indexOf(keyCol);
+  const orderIdx = headers.indexOf(orderCol);
+  const qtyIdx = qtyCol ? headers.indexOf(qtyCol) : -1;
+
+  const submittedKeys = new Set(dataRows.map(r => String(mapper(r)[keyCol])));
+
+  // 削除（逆順で行ずれを防ぐ）
+  for (let i = raw.length - 1; i >= 1; i--) {
+    if (cleanId(raw[i][orderIdx]) !== orderNo) continue;
+    const rowKey = String(raw[i][keyIdx]);
+    if (!submittedKeys.has(rowKey) && (qtyIdx === -1 || Number(raw[i][qtyIdx]) > 0)) {
+      sheet.deleteRow(i + 1);
+    }
+  }
+
+  // 2回目読み込み（削除後の最新状態）
+  const fresh = sheet.getDataRange().getValues();
+  const freshH = fresh[0].map(h => String(h).trim());
+  const freshKeyIdx = freshH.indexOf(keyCol);
+
+  // 既存行マップ（キー→行番号）
+  const rowMap = {};
+  for (let i = 1; i < fresh.length; i++) {
+    rowMap[String(fresh[i][freshKeyIdx]).trim()] = i + 1;
+  }
+
+  const appendRows = [];
+  dataRows.forEach(row => {
+    const mapped = mapper(row);
+    const key = String(mapped[keyCol]);
+    const rowIdx = rowMap[key];
+
+    if (rowIdx) {
+      // 既存行を更新（未指定列は既存値を保持）
+      const cur = fresh[rowIdx - 1];
+      const newRow = freshH.map((h, i) =>
+        mapped.hasOwnProperty(h) && mapped[h] != null ? mapped[h] : cur[i]
+      );
+      sheet.getRange(rowIdx, 1, 1, freshH.length).setValues([newRow]);
+    } else {
+      // 新規行はまとめて追加
+      appendRows.push(freshH.map(h => (mapped.hasOwnProperty(h) && mapped[h] != null ? mapped[h] : "")));
+    }
+  });
+
+  // 新規行を一括setValues（appendRowより高速）
+  if (appendRows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, appendRows.length, freshH.length).setValues(appendRows);
+  }
 }
 
 // 全角変換ユーティリティ (半角数字 -> 全角数字)
