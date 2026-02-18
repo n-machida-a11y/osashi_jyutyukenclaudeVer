@@ -130,21 +130,7 @@
         const textareaRef = useRef(null);
         const timerRef = useRef(null);
 
-        // 高さ調整関数
-        const adjustHeight = () => {
-            const el = textareaRef.current;
-            if (el) {
-                el.style.height = 'auto'; // 一旦autoにして縮小に対応
-                el.style.height = el.scrollHeight + 'px'; // 内容に合わせて高さを設定
-            }
-        };
-
         useEffect(() => { setQuery(value || ''); }, [value]);
-        
-        // value（query）が変わったとき、および初期表示時に高さを調整
-        useLayoutEffect(() => {
-            adjustHeight();
-        }, [query]);
 
         useEffect(() => {
             const handleClickOutside = (event) => { if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setShowResults(false); };
@@ -179,18 +165,17 @@
 
         return (
             <div ref={wrapperRef} className="relative w-full h-full flex items-center">
-                <textarea 
+                <input
                     ref={textareaRef}
-                    className={`${className} resize-none overflow-hidden align-middle leading-normal py-1`} 
-                    style={{minHeight: '28px', height: 'auto'}}
-                    rows={1}
-                    value={query} 
-                    onChange={(e) => { 
-                        if(!readOnly) handleSearch(e.target.value); 
-                    }} 
-                    onFocus={() => !readOnly && query && setShowResults(true)} 
-                    placeholder={placeholder} 
-                    readOnly={readOnly} 
+                    type="text"
+                    className={`${className} align-middle leading-normal py-1 truncate`}
+                    value={query}
+                    onChange={(e) => {
+                        if(!readOnly) handleSearch(e.target.value);
+                    }}
+                    onFocus={() => !readOnly && query && setShowResults(true)}
+                    placeholder={placeholder}
+                    readOnly={readOnly}
                 />
                 {!readOnly && showResults && (
                     <div className="absolute z-50 left-0 top-full mt-1 w-[400px] bg-white border border-gray-300 rounded shadow-lg suggestion-list">
@@ -393,7 +378,7 @@
         };
 
         return (
-          <div className={`w-full max-w-[1100px] print-full ${!isActive ? 'hidden' : ''}`}>
+          <div className={`w-full max-w-[1400px] print-full ${!isActive ? 'hidden' : ''}`}>
              <CustomConfirm isOpen={confirmState.isOpen} message={confirmState.message} onConfirm={confirmState.onConfirm} onCancel={confirmState.onCancel} />
              <div className={`mb-6 bg-white p-4 rounded-lg shadow-md print-hidden flex justify-between items-center border-l-4 ${mode === 'rental' ? 'border-green-600' : (mode === 'communication' ? 'border-purple-600' : 'border-blue-600')}`}>
                 <div className="flex items-center space-x-4">
@@ -771,7 +756,7 @@
         if (loading) return null;
         return (
           <div className="min-h-screen bg-gray-200 p-6 flex flex-col items-center pb-40">
-            <div id="tab-bar" className="w-full max-w-[1100px] flex items-end space-x-1 mb-0 print-hidden">
+            <div id="tab-bar" className="w-full max-w-[1400px] flex items-end space-x-1 mb-0 print-hidden">
                {tabs.map(tab => <div key={tab.id} onClick={() => setActiveTabId(tab.id)} className={`px-4 py-2 rounded-t-lg font-bold text-sm cursor-pointer border-t border-x relative group transition-all flex items-center ${activeTabId === tab.id ? 'tab-active shadow-sm z-10' : 'tab-inactive hover:bg-gray-100'}`} style={{ height: '42px' }}><span className="mr-2">{tab.title}</span><button onClick={(e) => { e.stopPropagation(); removeTab(tab.id); }} className="text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-3 h-3" /></button></div>)}
                <div className="relative"><button onClick={() => setAddMenuOpen(!addMenuOpen)} className="px-3 py-2 bg-gray-600 text-white rounded-t-lg hover:bg-gray-700 transition-colors flex items-center h-[42px] font-bold text-xs"><Plus className="w-4 h-4 mr-1" /> 追加</button>{addMenuOpen && <div className="absolute top-10 left-0 bg-white shadow-xl rounded border border-gray-300 w-32 z-50 overflow-hidden"><button onClick={() => addNewTab('sales')} className="block w-full text-left px-4 py-2 hover:bg-blue-50 text-sm">販売</button><button onClick={() => addNewTab('rental')} className="block w-full text-left px-4 py-2 hover:bg-green-50 text-sm">レンタル</button><button onClick={() => addNewTab('communication')} className="block w-full text-left px-4 py-2 hover:bg-purple-50 text-sm">通信費</button></div>}</div>
             </div>
