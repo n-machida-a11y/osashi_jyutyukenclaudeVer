@@ -107,6 +107,7 @@
       const X = ({ className }) => <IconWrapper className={className}><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></IconWrapper>;
       const Search = ({ className }) => <IconWrapper className={className}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></IconWrapper>;
       const Play = ({ className }) => <IconWrapper className={className}><polygon points="5 3 19 12 5 21 5 3"/></IconWrapper>;
+      const Edit2 = ({ className }) => <IconWrapper className={className}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></IconWrapper>;
 
       const NumberInput = ({ value, onChange, className, placeholder, readOnly, textAlign = 'right', isMasked = false, suffix = '' }) => {
         const [isFocused, setIsFocused] = useState(false);
@@ -220,7 +221,7 @@
         const isTemporary = header.dataStatus === 'temporary';
         const isSalesAdmin = CONFIG.userTitle.includes('営業事務');
         const isSubmitted = header.dataStatus === '提出済み';
-        const isLocked = isProcessing && !isAdmin && !isSalesAdmin;
+        const isLocked = (isProcessing || isSubmitted) && !isAdmin && !isSalesAdmin;
 
         useEffect(() => { let maxIdx = 3; for(let i=1; i<=10; i++) if(header[`shipDate${i}`] || header[`deliveryDate${i}`] || header[`deliveryTime${i}`] || header[`informationNo${i}`] || header[`shippingNo${i}`] || header[`deliveryMethod${i}`]) maxIdx = Math.max(maxIdx, i); setShippingRowCount(maxIdx); }, [header]);
         
@@ -330,7 +331,8 @@
         const addExtensionRow = () => { if (isLocked) return; const newRow = { id: generateId(), count: '延長', billingDate: '', amount: 0, costReference: '', slipNo: '', closingDate: '', checkStatus: '', rowOrderNo: '', note: '' }; recalcTotals(items, [...schedule, newRow]); };
 
         const handleApproveAction = (stampType, stampLabel) => {
-          setConfirmState({ isOpen: true, message: `「${stampLabel}」として承認してよろしいですか？`, onConfirm: () => { if (typeof google !== 'undefined' && google.script) google.script.run.withSuccessHandler((res) => { if(res.success) updateHeader(`approval${stampType}`, { status: '済', name: stampLabel, date: "" }); }).approveOrder(header.orderNo, stampType, stampLabel); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) });
+          const approverName = (CONFIG.userName && CONFIG.userName !== '担当者') ? CONFIG.userName : stampLabel;
+          setConfirmState({ isOpen: true, message: `「${approverName}」として承認してよろしいですか？`, onConfirm: () => { if (typeof google !== 'undefined' && google.script) google.script.run.withSuccessHandler((res) => { if(res.success) updateHeader(`approval${stampType}`, { status: '済', name: approverName, date: getTodayString() }); }).approveOrder(header.orderNo, stampType, approverName); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) });
         }
         const handleRowShipConfirm = (n) => {
           if (header[`shipConfirmName${n}`]) return;
@@ -405,12 +407,16 @@
                         <button onClick={handleSubmit} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-medium text-sm ml-2 flex items-center"><Send className="w-4 h-4 mr-2" /> {isSubmitted ? '再提出' : '提出'}</button>
                     </>
                   )}
-                  
+
+                  {isSubmitted && !isAdmin && !isSalesAdmin && (
+                      <button onClick={() => setConfirmState({ isOpen: true, message: '再編集しますか？ステータスが「作成中」に戻ります。', onConfirm: () => { onSave('reedit'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 shadow font-medium text-sm flex items-center"><Edit2 className="w-4 h-4 mr-2" /> 再編集</button>
+                  )}
+
                   {isSalesAdmin && !isProcessing && (
                       <button onClick={() => setConfirmState({ isOpen: true, message: 'ステータスを「処理中」に変更しますか？以降は編集がロックされます。', onConfirm: () => { onSave('process'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700 shadow font-medium text-sm ml-2 flex items-center"><Play className="w-4 h-4 mr-2" /> 処理開始</button>
                   )}
 
-                  {isLocked && <div className="flex items-center px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-500 font-bold text-sm shadow-inner cursor-not-allowed"><Lock className="w-4 h-4 mr-2" /> ロック中</div>}
+                  {isProcessing && !isAdmin && !isSalesAdmin && <div className="flex items-center px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-500 font-bold text-sm shadow-inner cursor-not-allowed"><Lock className="w-4 h-4 mr-2" /> ロック中</div>}
                 </div>
               </div>
               <div className="bg-white p-10 shadow-2xl print-full print:p-0 text-sm leading-relaxed border border-gray-300 relative min-h-[1300px]">
@@ -748,6 +754,7 @@
             if (type === 'submit') finalStatus = '提出済み';
             if (type === 'process') finalStatus = '処理中';
             if (type === 'temporary') finalStatus = 'temporary';
+            if (type === 'reedit') finalStatus = 'official';
 
             const finalData = { ...tab.data, header: { ...tab.data.header, dataStatus: finalStatus }, mode: tab.mode, userName: CONFIG.userName }; 
             google.script.run.withSuccessHandler(() => { setSaveStatus('saved'); setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, data: finalData } : t)); setTimeout(() => setSaveStatus('idle'), 3000); }).saveOrderData(finalData); 

@@ -266,13 +266,13 @@ function getOrderData(orderNo, summaryCode) {
   } catch (e) { return createMockData(orderNo, mode, [], "エラー: " + e.message); }
 }
 
-function approveOrder(orderNo, stampType, userName) {
+function approveOrder(orderNo, stampType, approverName) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const colMap = { 'Creator': '作成者承認', 'Staff': '本社事務承認', 'Check': '営業担当者承認', 'Manager': '課長承認', 'Director': '部長承認', 'President': '社長承認' };
     const colName = colMap[stampType];
     const update = {};
-    update[colName] = "済"; // AppSheet連動のため「済」を上書き
+    update[colName] = approverName || "済"; // 承認者名を保存（空の場合は"済"）
     updateOrAddRow(ss, SHEETS.HEADER, '受注No', orderNo, update);
     return { success: true };
   } catch (e) { return { success: false, message: e.toString() }; }
@@ -422,7 +422,12 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
   if (!row) return {};
   const getVal = (k) => (row[k] !== undefined ? String(row[k]) : "");
   const code = getVal('得意先コード');
-  const getStamp = (col, label) => ({ status: getVal(col) === '済' ? '済' : '', name: getVal(col) === '済' ? label : '', date: "" });
+  const getStamp = (col, label) => {
+    const val = getVal(col);
+    if (!val) return { status: '', name: '', date: "" };
+    // 旧データは"済"固定のため役職名にフォールバック、新データは実名を使用
+    return { status: '済', name: (val === '済' ? label : val), date: "" };
+  };
   
   // 得意先マスタから詳細情報を取得
   const custInfo = customerMasterMap[code] || {};
