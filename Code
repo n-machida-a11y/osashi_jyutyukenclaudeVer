@@ -10,6 +10,9 @@ const TEMPLATE_SS_ID = "1pyePh1YXZdVqJqPbvjKjkN28I8DrY-5nMAjt3MGQE0E";
 const DESTINATION_FOLDER_ID = "1-k5u4OCIw31Huwqco0MYkH6ZHYR9_g3G"; 
 const APPSHEET_FOLDER_NAME = "受注兼発送依頼書_ファイル保存場所";
 
+// ★メール送信切り替え: true=送信する / false=送信しない（スプレッドシート記録は行われる）
+const ENABLE_EMAIL_SEND = false;
+
 const SHEETS = {
   HEADER: "受注データ",
   ITEMS: "受注明細",
@@ -777,12 +780,14 @@ function sendRemarkEmail(params) {
     }
     if (!toEmail) return { success: false, message: '送信先メールアドレスが見つかりません' };
 
-    // メール送信
+    // メール送信（ENABLE_EMAIL_SEND = true のときのみ実際に送信）
     const subject = '【要確認】受注備考コメント';
     const body = `受注No：${orderNo}にコメントがありましたので\nご確認をお願いいたします。\n\n備考No\n${remarkId}\n\n備考\n${remarkContent || ''}\n\n日時\n${remarkDate || ''}\n\nよろしくお願いいたします。`;
-    const mailOptions = {};
-    if (ccEmails && ccEmails.length > 0) mailOptions.cc = ccEmails.join(',');
-    GmailApp.sendEmail(toEmail, subject, body, mailOptions);
+    if (ENABLE_EMAIL_SEND) {
+      const mailOptions = {};
+      if (ccEmails && ccEmails.length > 0) mailOptions.cc = ccEmails.join(',');
+      GmailApp.sendEmail(toEmail, subject, body, mailOptions);
+    }
 
     // 受注備考履歴に記録
     const histSheet = ss.getSheetByName('受注備考履歴');
