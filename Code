@@ -748,7 +748,7 @@ function getStaffEmails() {
 
 function sendRemarkEmail(params) {
   try {
-    const { orderNo, remarkId, remarkContent, remarkDate, ccEmails, userName } = params;
+    const { orderNo, remarkId, remarkContent, remarkDate, ccCodes, userName, category, status } = params;
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
 
     // メール送信（ENABLE_EMAIL_SEND = true のときのみ。falseの場合は記録のみ行う）
@@ -768,26 +768,29 @@ function sendRemarkEmail(params) {
       }
       if (!targetStaffCode) return { success: false, message: '担当者コードが見つかりません' };
 
-      // 担当者マスタからメールアドレスを取得
+      // 担当者マスタからToアドレスとCCアドレスを取得
       const staffSheet = ss.getSheetByName(SHEETS.STAFF);
       const staffData = staffSheet.getDataRange().getValues();
       const sHeaders = staffData[0].map(h => String(h).trim());
       const sCodeIdx = sHeaders.indexOf('担当者コード');
       const sEmailIdx = sHeaders.indexOf('メールアドレス');
       if (sEmailIdx === -1) return { success: false, message: '担当者マスタにメールアドレス列がありません' };
+
       let toEmail = '';
+      const ccEmailList = [];
       for (let i = 1; i < staffData.length; i++) {
-        if (cleanId(staffData[i][sCodeIdx]) === cleanId(targetStaffCode)) {
-          toEmail = String(staffData[i][sEmailIdx] || '').trim();
-          break;
-        }
+        const code = cleanId(staffData[i][sCodeIdx]);
+        const email = String(staffData[i][sEmailIdx] || '').trim();
+        if (!email) continue;
+        if (code === cleanId(targetStaffCode)) toEmail = email;
+        if (ccCodes && ccCodes.includes(code)) ccEmailList.push(email);
       }
       if (!toEmail) return { success: false, message: '送信先メールアドレスが見つかりません' };
 
       const subject = '【要確認】受注備考コメント';
       const body = `受注No：${orderNo}にコメントがありましたので\nご確認をお願いいたします。\n\n備考No\n${remarkId}\n\n備考\n${remarkContent || ''}\n\n日時\n${remarkDate || ''}\n\nよろしくお願いいたします。`;
       const mailOptions = {};
-      if (ccEmails && ccEmails.length > 0) mailOptions.cc = ccEmails.join(',');
+      if (ccEmailList.length > 0) mailOptions.cc = ccEmailList.join(',');
       GmailApp.sendEmail(toEmail, subject, body, mailOptions);
     }
 
@@ -807,8 +810,17 @@ function sendRemarkEmail(params) {
       histSheet.appendRow(newRow);
     }
 
-    // 受注備考シートのメール送付列を「済」に更新
-    updateOrAddRow(ss, SHEETS.REMARKS, '備考No', remarkId, { 'メール送付': '済' });
+    // 受注備考シートに全フィールドを保存（メール送付=済を含む）
+    updateOrAddRow(ss, SHEETS.REMARKS, '備考No', remarkId, {
+      '備考No': remarkId,
+      '受注No': orderNo,
+      'カテゴリ': category || '',
+      '備考': remarkContent || '',
+      '日時': remarkDate || '',
+      '状況': status || '',
+      'メール送付': '済',
+      '追加CC': (ccCodes || []).join(',')
+    });
 
     return { success: true };
   } catch (e) { return { success: false, message: e.toString() }; }
