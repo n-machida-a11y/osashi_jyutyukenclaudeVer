@@ -221,7 +221,7 @@
 
         const isAdmin = currentUser.role === 'admin';
         const isProcessing = header.dataStatus === '処理中';
-        const isTemporary = header.dataStatus === 'temporary';
+        const isTemporary = header.dataStatus === '仮';
         const isSalesAdmin = CONFIG.userTitle.includes('営業事務');
         const isSubmitted = header.dataStatus === '提出済み';
         const isLocked = (isProcessing || isSubmitted) && !isAdmin && !isSalesAdmin;
@@ -411,7 +411,7 @@
                   <div className="flex items-center space-x-2">
                     <select value={header.dataStatus} onChange={(e) => updateHeader('dataStatus', e.target.value)} className={`bg-gray-100 text-xs font-bold p-1 rounded border border-gray-300 outline-none cursor-pointer ${isLocked ? 'pointer-events-none text-gray-500' : ''}`} disabled={isLocked}>
                         <option value="official">通常(本番)</option>
-                        <option value="temporary">【仮】(金額0)</option>
+                        <option value="仮">【仮】(金額0)</option>
                         <option value="replacement">【差替】</option>
                     </select>
                     {getStatusBadge()}
@@ -449,7 +449,7 @@
                   <div className="flex-1 pt-2">
                     <h1 className="text-3xl font-serif font-bold tracking-widest border-b-4 border-double border-black pb-1 inline-block mb-4">
                       {mode === 'rental' ? 'レンタル受注兼発送依頼書' : (mode === 'communication' ? '通信費 受注兼発送依頼書' : '受注兼発送依頼書')}
-                      {isTemporary && <span className="text-red-600 ml-2">【仮】</span>}{header.dataStatus === 'replacement' && <span className="text-red-600 ml-2">【差替】</span>}{header.dataStatus === '提出済み' && <span className="text-blue-600 ml-2">【提出済】</span>}{header.dataStatus === '処理中' && <span className="text-red-600 ml-2 border border-red-600 px-1">【処理中】</span>}
+                      {isTemporary && <span className="text-red-600 ml-2">【仮】</span>}{header.dataStatus === '差替' && <span className="text-red-600 ml-2">【差替】</span>}{header.dataStatus === '提出済み' && <span className="text-blue-600 ml-2">【提出済】</span>}{header.dataStatus === '処理中' && <span className="text-red-600 ml-2 border border-red-600 px-1">【処理中】</span>}
                     </h1>
                     <div className="flex flex-col gap-2">
                       {/* 1行目: 受注No・見積書No・担当営業 */}
@@ -752,7 +752,7 @@
                         customerCode: "CUST001", customerName: "株式会社デモ商事", branchName: "本社", 
                         approvalCreator: { status: '済', name: '山田' }, approvalCheck: { status: '', name: '' },
                         approvalStaff: { status: '済', name: '佐藤' },
-                        dataStatus: 'official', deliveryMethod1: 'ヤマト(PM)',
+                        dataStatus: '通常', deliveryMethod1: 'ヤマト(PM)',
                         shipDate1: '2023/10/01', deliveryDate1: '2023/10/02',
                         shipCode: 'SHIP001', headerSlipNo: 'SLIP123'
                     };
@@ -773,7 +773,7 @@
                 }, 1000);
             }
         }, []);
-        const addNewTab = (newMode) => { const currentTab = tabs.find(t => t.id === activeTabId), newId = generateId(), newTitle = newMode === 'rental' ? 'レンタル' : (newMode === 'communication' ? '通信' : '販売'), newData = JSON.parse(JSON.stringify(currentTab.data)); newData.mode = newMode; newData.header.dataStatus = 'official'; setTabs([...tabs, { id: newId, title: newTitle, mode: newMode, data: newData }]); setActiveTabId(newId); setAddMenuOpen(false); };
+        const addNewTab = (newMode) => { const currentTab = tabs.find(t => t.id === activeTabId), newId = generateId(), newTitle = newMode === 'rental' ? 'レンタル' : (newMode === 'communication' ? '通信' : '販売'), newData = JSON.parse(JSON.stringify(currentTab.data)); newData.mode = newMode; newData.header.dataStatus = '通常'; setTabs([...tabs, { id: newId, title: newTitle, mode: newMode, data: newData }]); setActiveTabId(newId); setAddMenuOpen(false); };
         const removeTab = (tabId) => { if(!confirm('このタブを削除してもよろしいですか？')) return; const newTabs = tabs.filter(t => t.id !== tabId); setTabs(newTabs); if (newTabs.length > 0 && activeTabId === tabId) setActiveTabId(newTabs[0].id); };
         const handleExportExcel = (tabData) => { setSaveStatus('saving'); google.script.run.withSuccessHandler((res) => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 1500); if (res.success) { if (res.driveUrl) window.open(res.driveUrl, '_blank'); else if (res.url) window.open(res.url, '_blank'); } else alert('出力に失敗しました: ' + (res.message || '不明なエラー')); }).withFailureHandler((err) => { setSaveStatus('idle'); alert('エラー: ' + err); }).generateOrderSheet(tabData); };
         const handleSave = (type) => { 
@@ -785,8 +785,8 @@
             let finalStatus = tab.data.header.dataStatus;
             if (type === 'submit') finalStatus = '提出済み';
             if (type === 'process') finalStatus = '処理中';
-            if (type === 'temporary') finalStatus = 'temporary';
-            if (type === 'reedit') finalStatus = 'official';
+            if (type === 'temporary') finalStatus = '仮';
+            if (type === 'reedit') finalStatus = '通常';
 
             const finalData = { ...tab.data, header: { ...tab.data.header, dataStatus: finalStatus }, mode: tab.mode, userName: CONFIG.userName }; 
             google.script.run.withSuccessHandler(() => { setSaveStatus('saved'); setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, data: finalData } : t)); setTimeout(() => setSaveStatus('idle'), 1500); }).saveOrderData(finalData); 

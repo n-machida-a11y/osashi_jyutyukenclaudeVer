@@ -400,7 +400,7 @@ function getCustomerMasterMap(ss) {
   return map;
 }
 
-function createMockData(orderNo, mode, logs, msg) { return { success: false, mode: mode, header: { formId: "SYSTEM", title: msg, orderNo: orderNo || "---", dataStatus: 'official' }, items: [], schedule: [], remarks: [], totals: {subtotal:0, tax:0, total:0} }; }
+function createMockData(orderNo, mode, logs, msg) { return { success: false, mode: mode, header: { formId: "SYSTEM", title: msg, orderNo: orderNo || "---", dataStatus: '通常' }, items: [], schedule: [], remarks: [], totals: {subtotal:0, tax:0, total:0} }; }
 
 function saveOrderData(saveData) {
   try {
@@ -621,7 +621,7 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     closingDate: getVal('請求締日') || (custInfo.closingDate), 
     paymentDate: getVal('支払日') || convertCollectionDate(custInfo.collectionCode), 
     collectionMethod: getVal('回収種別１'), 
-    dataStatus: getVal('データステータス') || 'official', 
+    dataStatus: getVal('データステータス') || '通常', 
     rentalId: getVal('レンタルID'), 
     siteName: getVal('現場名'), 
     periodStartDate: getVal('期間開始'), 
