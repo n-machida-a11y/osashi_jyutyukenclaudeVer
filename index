@@ -109,6 +109,7 @@
       const Search = ({ className }) => <IconWrapper className={className}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></IconWrapper>;
       const Play = ({ className }) => <IconWrapper className={className}><polygon points="5 3 19 12 5 21 5 3"/></IconWrapper>;
       const Edit2 = ({ className }) => <IconWrapper className={className}><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></IconWrapper>;
+      const CheckCircle = ({ className }) => <IconWrapper className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></IconWrapper>;
 
       const NumberInput = ({ value, onChange, className, placeholder, readOnly, textAlign = 'right', isMasked = false, suffix = '' }) => {
         const [isFocused, setIsFocused] = useState(false);
@@ -221,10 +222,11 @@
 
         const isAdmin = currentUser.role === 'admin';
         const isProcessing = header.dataStatus === '処理中';
+        const isCompleted = header.dataStatus === '完了';
         const isTemporary = header.dataStatus === '仮';
         const isSalesAdmin = CONFIG.userTitle.includes('営業事務');
         const isSubmitted = header.dataStatus === '提出済み';
-        const isLocked = (isProcessing || isSubmitted) && !isAdmin && !isSalesAdmin;
+        const isLocked = isProcessing || isCompleted || (isSubmitted && !isAdmin && !isSalesAdmin);
 
         useEffect(() => { let maxIdx = 3; for(let i=1; i<=10; i++) if(header[`shipDate${i}`] || header[`deliveryDate${i}`] || header[`deliveryTime${i}`] || header[`informationNo${i}`] || header[`shippingNo${i}`] || header[`deliveryMethod${i}`]) maxIdx = Math.max(maxIdx, i); setShippingRowCount(maxIdx); }, [header]);
         
@@ -398,6 +400,7 @@
         const getStatusBadge = () => {
             if (header.dataStatus === '提出済み') return <span className="bg-blue-600 text-white px-2 py-1 rounded text-xs font-bold">提出済</span>;
             if (header.dataStatus === '処理中') return <span className="bg-red-600 text-white px-2 py-1 rounded text-xs font-bold">処理中</span>;
+            if (header.dataStatus === '完了') return <span className="bg-green-700 text-white px-2 py-1 rounded text-xs font-bold">完了</span>;
             for(let i=1; i<=10; i++) if(header[`shipDate${i}`]) return <span className="bg-green-600 text-white px-2 py-1 rounded text-xs font-bold">出荷指示有</span>;
             return <span className="bg-gray-500 text-white px-2 py-1 rounded text-xs font-bold">未提出</span>;
         };
@@ -410,9 +413,9 @@
                   <div className="flex flex-col"><span className={`font-bold ${mode === 'rental' ? 'text-green-700' : (mode === 'communication' ? 'text-purple-700' : 'text-blue-700')} text-lg`}>【{mode === 'rental' ? 'レンタル' : (mode === 'communication' ? '通信費' : '販売品')}】</span><span className="text-xs text-gray-500">受注No: {header.orderNo}</span></div>
                   <div className="flex items-center space-x-2">
                     <select value={header.dataStatus} onChange={(e) => updateHeader('dataStatus', e.target.value)} className={`bg-gray-100 text-xs font-bold p-1 rounded border border-gray-300 outline-none cursor-pointer ${isLocked ? 'pointer-events-none text-gray-500' : ''}`} disabled={isLocked}>
-                        <option value="official">通常(本番)</option>
+                        <option value="作成中">作成中</option>
                         <option value="仮">【仮】(金額0)</option>
-                        <option value="replacement">【差替】</option>
+                        <option value="差替">【差替】</option>
                     </select>
                     {getStatusBadge()}
                   </div>
@@ -427,7 +430,7 @@
                   {!isLocked && (
                     <>
                         <button onClick={() => setConfirmState({ isOpen: true, message: '一時保存してもよろしいですか？', onConfirm: () => { onSave('temporary'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow font-medium text-sm flex items-center"><Save className="w-4 h-4 mr-2" /> 一時保存</button>
-                        <button onClick={handleSubmit} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-medium text-sm ml-2 flex items-center"><Send className="w-4 h-4 mr-2" /> {isSubmitted ? '再提出' : '提出'}</button>
+                        {!(isSalesAdmin && isSubmitted) && <button onClick={handleSubmit} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-medium text-sm ml-2 flex items-center"><Send className="w-4 h-4 mr-2" /> 提出</button>}
                     </>
                   )}
 
@@ -435,11 +438,15 @@
                       <button onClick={() => setConfirmState({ isOpen: true, message: '再編集しますか？ステータスが「作成中」に戻ります。', onConfirm: () => { onSave('reedit'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 shadow font-medium text-sm flex items-center"><Edit2 className="w-4 h-4 mr-2" /> 再編集</button>
                   )}
 
-                  {isSalesAdmin && !isProcessing && (
+                  {isSalesAdmin && isSubmitted && !isProcessing && !isCompleted && (
                       <button onClick={() => setConfirmState({ isOpen: true, message: 'ステータスを「処理中」に変更しますか？以降は編集がロックされます。', onConfirm: () => { onSave('process'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700 shadow font-medium text-sm ml-2 flex items-center"><Play className="w-4 h-4 mr-2" /> 処理開始</button>
                   )}
 
-                  {isProcessing && !isAdmin && !isSalesAdmin && <div className="flex items-center px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-500 font-bold text-sm shadow-inner cursor-not-allowed"><Lock className="w-4 h-4 mr-2" /> ロック中</div>}
+                  {isSalesAdmin && isProcessing && (
+                      <button onClick={() => setConfirmState({ isOpen: true, message: '処理を完了しますか？', onConfirm: () => { onSave('complete'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-6 py-2 bg-green-700 text-white rounded hover:bg-green-800 shadow font-medium text-sm ml-2 flex items-center"><CheckCircle className="w-4 h-4 mr-2" /> 処理完了</button>
+                  )}
+
+                  {(isProcessing || isCompleted) && !isSalesAdmin && <div className="flex items-center px-3 py-2 bg-gray-100 border border-gray-300 rounded text-gray-500 font-bold text-sm shadow-inner cursor-not-allowed"><Lock className="w-4 h-4 mr-2" /> ロック中</div>}
                 </div>
               </div>
               <div className="bg-white p-10 shadow-2xl print-full print:p-0 text-sm leading-relaxed border border-gray-300 relative min-h-[1300px]">
@@ -449,7 +456,7 @@
                   <div className="flex-1 pt-2">
                     <h1 className="text-3xl font-serif font-bold tracking-widest border-b-4 border-double border-black pb-1 inline-block mb-4">
                       {mode === 'rental' ? 'レンタル受注兼発送依頼書' : (mode === 'communication' ? '通信費 受注兼発送依頼書' : '受注兼発送依頼書')}
-                      {isTemporary && <span className="text-red-600 ml-2">【仮】</span>}{header.dataStatus === '差替' && <span className="text-red-600 ml-2">【差替】</span>}{header.dataStatus === '提出済み' && <span className="text-blue-600 ml-2">【提出済】</span>}{header.dataStatus === '処理中' && <span className="text-red-600 ml-2 border border-red-600 px-1">【処理中】</span>}
+                      {isTemporary && <span className="text-red-600 ml-2">【仮】</span>}{header.dataStatus === '差替' && <span className="text-red-600 ml-2">【差替】</span>}{header.dataStatus === '提出済み' && <span className="text-blue-600 ml-2">【提出済】</span>}{header.dataStatus === '処理中' && <span className="text-red-600 ml-2 border border-red-600 px-1">【処理中】</span>}{header.dataStatus === '完了' && <span className="text-green-700 ml-2 border border-green-700 px-1">【完了】</span>}
                     </h1>
                     <div className="flex flex-col gap-2">
                       {/* 1行目: 受注No・見積書No・担当営業 */}
@@ -752,7 +759,7 @@
                         customerCode: "CUST001", customerName: "株式会社デモ商事", branchName: "本社", 
                         approvalCreator: { status: '済', name: '山田' }, approvalCheck: { status: '', name: '' },
                         approvalStaff: { status: '済', name: '佐藤' },
-                        dataStatus: '通常', deliveryMethod1: 'ヤマト(PM)',
+                        dataStatus: '作成中', deliveryMethod1: 'ヤマト(PM)',
                         shipDate1: '2023/10/01', deliveryDate1: '2023/10/02',
                         shipCode: 'SHIP001', headerSlipNo: 'SLIP123'
                     };
@@ -773,7 +780,7 @@
                 }, 1000);
             }
         }, []);
-        const addNewTab = (newMode) => { const currentTab = tabs.find(t => t.id === activeTabId), newId = generateId(), newTitle = newMode === 'rental' ? 'レンタル' : (newMode === 'communication' ? '通信' : '販売'), newData = JSON.parse(JSON.stringify(currentTab.data)); newData.mode = newMode; newData.header.dataStatus = '通常'; setTabs([...tabs, { id: newId, title: newTitle, mode: newMode, data: newData }]); setActiveTabId(newId); setAddMenuOpen(false); };
+        const addNewTab = (newMode) => { const currentTab = tabs.find(t => t.id === activeTabId), newId = generateId(), newTitle = newMode === 'rental' ? 'レンタル' : (newMode === 'communication' ? '通信' : '販売'), newData = JSON.parse(JSON.stringify(currentTab.data)); newData.mode = newMode; newData.header.dataStatus = '作成中'; setTabs([...tabs, { id: newId, title: newTitle, mode: newMode, data: newData }]); setActiveTabId(newId); setAddMenuOpen(false); };
         const removeTab = (tabId) => { if(!confirm('このタブを削除してもよろしいですか？')) return; const newTabs = tabs.filter(t => t.id !== tabId); setTabs(newTabs); if (newTabs.length > 0 && activeTabId === tabId) setActiveTabId(newTabs[0].id); };
         const handleExportExcel = (tabData) => { setSaveStatus('saving'); google.script.run.withSuccessHandler((res) => { setSaveStatus('saved'); setTimeout(() => setSaveStatus('idle'), 1500); if (res.success) { if (res.driveUrl) window.open(res.driveUrl, '_blank'); else if (res.url) window.open(res.url, '_blank'); } else alert('出力に失敗しました: ' + (res.message || '不明なエラー')); }).withFailureHandler((err) => { setSaveStatus('idle'); alert('エラー: ' + err); }).generateOrderSheet(tabData); };
         const handleSave = (type) => { 
@@ -785,8 +792,9 @@
             let finalStatus = tab.data.header.dataStatus;
             if (type === 'submit') finalStatus = '提出済み';
             if (type === 'process') finalStatus = '処理中';
+            if (type === 'complete') finalStatus = '完了';
             if (type === 'temporary') finalStatus = '仮';
-            if (type === 'reedit') finalStatus = '通常';
+            if (type === 'reedit') finalStatus = '作成中';
 
             const finalData = { ...tab.data, header: { ...tab.data.header, dataStatus: finalStatus }, mode: tab.mode, userName: CONFIG.userName }; 
             google.script.run.withSuccessHandler(() => { setSaveStatus('saved'); setTabs(prev => prev.map(t => t.id === activeTabId ? { ...t, data: finalData } : t)); setTimeout(() => setSaveStatus('idle'), 1500); }).saveOrderData(finalData); 
