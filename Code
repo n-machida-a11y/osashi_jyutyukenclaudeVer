@@ -543,6 +543,7 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
           ships[`deliveryMethod${n}`] = item.deliveryMethod || "";
           ships[`shipConfirmName${n}`] = item.confirmName || "";
           ships[`shipConfirmDate${n}`] = item.confirmDate || "";
+          ships[`shipConfirm2Name${n}`] = item.confirm2Name || "";
         });
         loadedFromJson = true;
       }
@@ -578,7 +579,17 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
       if(dm) ships[`deliveryMethod${i}`] = dm;
     }
   }
-  
+
+  // FM列から情報No・出荷Noを上書き（JSON/フォールバックより優先して最終的に適用）
+  for (let i = 1; i <= 10; i++) {
+    const sI = String(i);
+    const fI = toFullWidth(sI);
+    const fmInfo = getVal('FM情報No' + sI) || getVal('FM情報No' + fI);
+    const fmShip = getVal('FM出荷No' + sI) || getVal('FM出荷No' + fI);
+    if (fmInfo) ships['informationNo' + i] = fmInfo;
+    if (fmShip) ships['shippingNo' + i] = fmShip;
+  }
+
   // 担当者コードから担当営業名を解決
   const salesRepName = staffMap[getVal('担当者コード')] || getVal('担当者コード');
 
@@ -714,15 +725,24 @@ function reverseMapHeader(h) {
             shippingNo: shippingNo || "",
             deliveryMethod: deliveryMethod || "",
             confirmName: h[`shipConfirmName${i}`] || "",
-            confirmDate: h[`shipConfirmDate${i}`] || ""
+            confirmDate: h[`shipConfirmDate${i}`] || "",
+            confirm2Name: h[`shipConfirm2Name${i}`] || ""
         });
     }
+  }
+
+  // FM列への個別書き込み（情報No・出荷Noをフラット列にも保存）
+  for (let i = 1; i <= 10; i++) {
+    const informationNo = h['informationNo' + i];
+    const shippingNo = h['shippingNo' + i];
+    if (informationNo) b['FM情報No' + i] = informationNo;
+    if (shippingNo) b['FM出荷No' + i] = shippingNo;
   }
 
   if (shippingDetails.length > 0) {
       b['出荷配送詳細(JSON)'] = JSON.stringify(shippingDetails);
   }
-  
+
   return b;
 }
 
@@ -849,6 +869,77 @@ function sendRemarkEmail(params) {
 
     return { success: true };
   } catch (e) { return { success: false, message: e.toString() }; }
+}
+
+/**
+ * ファイル添付: アップロード
+ */
+function uploadAttachment(orderNo, fileName, fileBase64, mimeType) {
+  try {
+    const parentFolder = DriveApp.getFolderById(DESTINATION_FOLDER_ID);
+    const folderName = '受注添付_' + cleanId(orderNo);
+    let folder;
+    const folderIter = parentFolder.getFoldersByName(folderName);
+    if (folderIter.hasNext()) {
+      folder = folderIter.next();
+    } else {
+      folder = parentFolder.createFolder(folderName);
+    }
+    const base64Data = fileBase64.includes(',') ? fileBase64.split(',')[1] : fileBase64;
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType || 'application/octet-stream', fileName);
+    const file = folder.createFile(blob);
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheetName = '受注添付ファイル';
+    let sheet = ss.getSheetByName(sheetName);
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      sheet.getRange(1, 1, 1, 5).setValues([['受注No', 'ファイル名', 'ファイルURL', 'ファイルID', '登録日']]);
+    }
+    const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm');
+    sheet.appendRow([cleanId(orderNo), fileName, file.getUrl(), file.getId(), now]);
+    return { success: true, fileUrl: file.getUrl(), fileId: file.getId(), fileName: fileName };
+  } catch(e) {
+    return { success: false, message: e.toString() };
+  }
+}
+
+/**
+ * ファイル添付: 一覧取得
+ */
+function getAttachments(orderNo) {
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('受注添付ファイル');
+    if (!sheet) return [];
+    const data = sheet.getDataRange().getValues();
+    const result = [];
+    for (let i = 1; i < data.length; i++) {
+      if (cleanId(data[i][0]) === cleanId(orderNo)) {
+        result.push({ fileName: String(data[i][1] || ''), fileUrl: String(data[i][2] || ''), fileId: String(data[i][3] || ''), registeredAt: String(data[i][4] || '') });
+      }
+    }
+    return result;
+  } catch(e) { return []; }
+}
+
+/**
+ * ファイル添付: 削除
+ */
+function deleteAttachment(orderNo, fileId) {
+  try {
+    try { DriveApp.getFileById(fileId).setTrashed(true); } catch(e) {}
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('受注添付ファイル');
+    if (!sheet) return { success: true };
+    const data = sheet.getDataRange().getValues();
+    for (let i = data.length - 1; i >= 1; i--) {
+      if (cleanId(data[i][0]) === cleanId(orderNo) && String(data[i][3]) === String(fileId)) {
+        sheet.deleteRow(i + 1);
+        break;
+      }
+    }
+    return { success: true };
+  } catch(e) { return { success: false, message: e.toString() }; }
 }
 
 /**
