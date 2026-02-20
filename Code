@@ -652,8 +652,7 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     approvalDirector: getStamp('部長承認', '部長'), 
     approvalPresident: getStamp('社長承認', '社長'), 
     
-    // 売上日を「受注日」の値に変更
-    salesDate: formatDate(row['受注日']), 
+    salesDate: formatDate(row['売上日']),
     // 伝票Noの取得を強化（半角・全角）
     headerSlipNo: getVal('伝票No') || getVal('伝票Ｎｏ'), 
     totalCost: row['原価合計'] || '', 
