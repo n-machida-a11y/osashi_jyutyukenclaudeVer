@@ -207,6 +207,28 @@
 
       const addMonths = (dateStr, months) => { if (!dateStr) return ''; const d = new Date(dateStr); if (isNaN(d.getTime())) return ''; d.setMonth(d.getMonth() + months); return d.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '/'); };
 
+      // 出荷日→支払日自動計算: 20日以前→翌月20日、21日以降→翌々月20日
+      const calcPaymentDateFromShipDate = (dateStr) => {
+        if (!dateStr) return '';
+        const parts = String(dateStr).split('/');
+        let year, month, day;
+        if (parts.length === 2) { year = new Date().getFullYear(); month = parseInt(parts[0]); day = parseInt(parts[1]); }
+        else if (parts.length === 3) { year = parseInt(parts[0]); month = parseInt(parts[1]); day = parseInt(parts[2]); }
+        else return '';
+        if (isNaN(year) || isNaN(month) || isNaN(day)) return '';
+        const offset = day <= 20 ? 1 : 2;
+        const targetMonth = month + offset;
+        const finalYear = year + Math.floor((targetMonth - 1) / 12);
+        const finalMonth = ((targetMonth - 1) % 12) + 1;
+        return `${finalYear}/${String(finalMonth).padStart(2, '0')}/20`;
+      };
+      const findLatestShipDate = (headerObj) => {
+        const parse = (s) => { if (!s) return null; const p = String(s).split('/'); if (p.length === 2) return new Date(new Date().getFullYear(), parseInt(p[0])-1, parseInt(p[1])); if (p.length === 3) return new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2])); return null; };
+        let latestDate = null, latestStr = '';
+        for (let i = 1; i <= 10; i++) { const sd = headerObj['shipDate' + i]; if (!sd) continue; const d = parse(sd); if (d && !isNaN(d.getTime()) && (!latestDate || d > latestDate)) { latestDate = d; latestStr = sd; } }
+        return latestStr;
+      };
+
       const AttachModal = ({ isOpen, onClose, attachments, uploading, onUpload, onDelete }) => {
         const [pendingFile, setPendingFile] = React.useState(null);
         const [customName, setCustomName] = React.useState('');
@@ -233,7 +255,14 @@
                 <h3 className="font-bold text-base flex items-center gap-2"><Paperclip className="w-4 h-4 text-purple-600" />添付ファイル管理</h3>
                 <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
               </div>
-              <div className="p-5 overflow-y-auto flex-1">
+              <div className="p-5 overflow-y-auto flex-1 relative">
+                {uploading && (
+                  <div className="absolute inset-0 bg-white bg-opacity-95 flex flex-col items-center justify-center z-10 rounded-b-lg">
+                    <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <div className="text-base font-bold text-blue-700">アップロード中...</div>
+                    <div className="text-xs text-gray-500 mt-1">Googleドライブに保存しています</div>
+                  </div>
+                )}
                 {pendingFile ? (
                   <div className="border border-blue-200 rounded-lg p-4 mb-4 bg-blue-50">
                     <div className="text-[11px] text-gray-500 mb-1">選択ファイル: <span className="font-mono">{pendingFile.name}</span></div>
@@ -326,7 +355,12 @@
             const newErrors = {};
             if (!header.customerName) newErrors.customerName = true;
             if (!header.salesRepClient) newErrors.salesRepClient = true;
+            if (!header.salesRep) newErrors.salesRep = true;
+            if (!header.customerAddress) newErrors.customerAddress = true;
+            if (!header.customerTel) newErrors.customerTel = true;
             if (!header.deliveryMethod1) newErrors.deliveryMethod1 = true;
+            if (!header.closingDate) newErrors.closingDate = true;
+            if (!header.paymentDate) newErrors.paymentDate = true;
             if (techReqEnabled && !header.internalMemo) newErrors.internalMemo = true;
             setErrors(newErrors);
             return Object.keys(newErrors).length === 0;
@@ -334,7 +368,7 @@
 
         const handleSubmit = () => {
             if (!validate()) {
-                alert("未入力の必須項目があります。\n・社名\n・先方担当者名\n・配送方法(1行目)\nなどを確認してください。\n(赤枠で表示されています)");
+                alert("未入力の必須項目があります。\n・社名\n・先方担当者名\n・担当営業\n・住所\n・TEL\n・配送方法(1行目)\n・締め日\n・支払日\nなどを確認してください。\n(赤枠で表示されています)");
                 return;
             }
             const submittedDate = getTodayString();
@@ -354,8 +388,13 @@
         const generateSchedule = () => { if (isLocked) return; if (!periodMonths || periodMonths <= 0) { alert('期間が正しく設定されていません。'); return; } if(!confirm('現在の請求スケジュールを上書きして生成しますか？')) return; const newSchedule = []; for (let i = 0; i < periodMonths; i++) newSchedule.push({ id: generateId(), count: String(i + 1), billingDate: addMonths(header.periodStartDate, i), amount: billingSummary.monthly.subtotal, closingDate: '', slipNo: '', costReference: '', checkStatus: '', note: '' }); updateData({ schedule: newSchedule }); };
         const updateData = (updates) => { if (!isLocked) onChange({ ...data, ...updates }); };
         const updateHeader = (key, val) => {
-            if (errors[key]) setErrors({...errors, [key]: false}); 
-            updateData({ header: { ...header, [key]: val } });
+            if (errors[key]) setErrors({...errors, [key]: false});
+            const newHeader = { ...header, [key]: val };
+            if (key.startsWith('shipDate')) {
+                const latest = findLatestShipDate(newHeader);
+                if (latest) newHeader.paymentDate = calcPaymentDateFromShipDate(latest);
+            }
+            updateData({ header: newHeader });
         };
         const updatePaymentType = (val) => updateData({ paymentConditionType: val });
         const updatePaymentDetail = (val) => updateData({ paymentConditionDetail: val });
@@ -498,7 +537,7 @@
             <div className="w-full text-center border-b border-black text-[10px] bg-label py-1 font-bold">{title}</div>
             <div className="flex-1 flex flex-col items-center justify-center w-full relative">
               {info && info.status === '済' ? (
-                <div className="w-12 h-12 rounded-full border-2 border-red-600 flex items-center justify-center text-red-600 font-serif transform -rotate-12 select-none bg-white p-0.5 shadow-sm">
+                <div className="w-12 h-12 rounded-full border-2 border-red-600 flex items-center justify-center text-red-600 font-serif select-none bg-white p-0.5 shadow-sm">
                   <span className="text-[11px] font-bold leading-tight text-center">{info.name}</span>
                 </div>
               ) : ( 
@@ -599,7 +638,7 @@
                           </div>
                           <div className="flex items-center">
                               <span className="font-bold mr-2 text-sm bg-gray-100 px-1 rounded border border-gray-300 whitespace-nowrap">担当営業</span>
-                              <input type="text" value={header.salesRep || ''} onChange={e => updateHeader('salesRep', e.target.value)} disabled={isLocked} className={`border-b border-gray-300 w-40 bg-transparent focus:outline-none ml-1 ${isLocked ? 'input-locked' : ''}`} placeholder="営業担当者名" />
+                              <input type="text" value={header.salesRep || ''} onChange={e => updateHeader('salesRep', e.target.value)} disabled={isLocked} className={`border-b border-gray-300 w-40 bg-transparent focus:outline-none ml-1 ${isLocked ? 'input-locked' : ''} ${errors.salesRep ? 'input-error' : ''}`} placeholder="営業担当者名(必須)" />
                           </div>
                       </div>
                       {/* 2行目: モード依存の追加情報 */}
@@ -659,8 +698,8 @@
                               <span className="text-xs font-bold">〒</span>
                               <input className={`w-24 bg-transparent outline-none border-b border-gray-300 font-mono text-sm ${isLocked ? 'input-locked' : ''}`} value={header.customerZipCode || ''} onChange={e => updateHeader('customerZipCode', e.target.value)} disabled={isLocked} />
                           </div>
-                          <textarea className={`w-full bg-transparent outline-none resize-none text-base ${isLocked ? 'input-locked' : ''}`} rows="2" value={header.customerAddress || ''} onChange={e => updateHeader('customerAddress', e.target.value)} disabled={isLocked} placeholder="住所" />
-                          <div className="flex gap-4 text-xs font-bold text-gray-600 mt-2"><span>TEL: <input className="bg-transparent outline-none font-normal" value={header.customerTel || ''} onChange={e => updateHeader('customerTel', e.target.value)} disabled={isLocked} /></span><span>FAX: <input className="bg-transparent outline-none font-normal" value={header.customerFax || ''} onChange={e => updateHeader('customerFax', e.target.value)} disabled={isLocked} /></span></div>
+                          <textarea className={`w-full bg-transparent outline-none resize-none text-base ${isLocked ? 'input-locked' : ''} ${errors.customerAddress ? 'input-error' : ''}`} rows="2" value={header.customerAddress || ''} onChange={e => updateHeader('customerAddress', e.target.value)} disabled={isLocked} placeholder="住所" />
+                          <div className="flex gap-4 text-xs font-bold text-gray-600 mt-2"><span>TEL: <input className={`bg-transparent outline-none font-normal ${errors.customerTel ? 'input-error' : ''}`} value={header.customerTel || ''} onChange={e => updateHeader('customerTel', e.target.value)} disabled={isLocked} /></span><span>FAX: <input className="bg-transparent outline-none font-normal" value={header.customerFax || ''} onChange={e => updateHeader('customerFax', e.target.value)} disabled={isLocked} /></span></div>
                       </div>
                       <div className="mt-4 border-t border-gray-300 pt-1 px-2"><div className="flex justify-between items-center"><span className="text-[10px] font-bold text-gray-500">得意先備考</span><span className="text-[9px] font-bold text-red-500">※営業事務用</span></div><textarea className={`w-full bg-red-50 outline-none resize-none text-sm text-red-600 font-bold ${(!isAdmin && !isSalesAdmin) ? 'opacity-70 cursor-not-allowed' : ''}`} rows="2" value={header.customerNote || ''} onChange={e => updateHeader('customerNote', e.target.value)} disabled={!isAdmin && !isSalesAdmin} /></div>
                     </div>
@@ -679,7 +718,7 @@
                     {(mode === 'rental' || mode === 'communication') && <div className="bg-yellow-50 border border-yellow-200 p-3 my-2 rounded-sm flex items-center gap-4"><div className="bg-label px-2 py-0.5 rounded text-[10px] font-bold border border-gray-300">期間</div><div className="flex items-center gap-2"><input type="date" className={`bg-transparent border-b border-gray-400 font-mono text-sm ${isLocked ? 'input-locked' : ''}`} value={header.periodStartDate || ''} onChange={e => updateHeader('periodStartDate', e.target.value)} disabled={isLocked} /><span>～</span><input type="date" className={`bg-transparent border-b border-gray-400 font-mono text-sm ${isLocked ? 'input-locked' : ''}`} value={header.periodEndDate || ''} onChange={e => updateHeader('periodEndDate', e.target.value)} disabled={isLocked} /></div>{periodMonths !== null && <span className="text-blue-700 font-bold text-xs whitespace-nowrap">全 {periodMonths} ヶ月</span>}<button onClick={generateSchedule} className={`bg-white border border-blue-300 text-blue-600 px-3 py-1 rounded text-xs font-bold hover:bg-blue-50 flex items-center gap-1 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isLocked}><Calculator className="w-3 h-3" /> 生成</button></div>}
                     <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-sm">
                       <div className="text-xs bg-label px-2 py-0.5 rounded font-bold border border-gray-300 w-max mb-2">売上先の集金条件</div>
-                      <div className="flex flex-col gap-2 px-2"><div className="flex items-center gap-3 flex-wrap"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">締め日:</span><select value={header.closingDate ? String(header.closingDate) : ''} onChange={e => updateHeader('closingDate', e.target.value)} disabled={isLocked} className={`border-b border-gray-400 bg-transparent font-bold outline-none w-16 text-center ${isLocked ? 'input-locked' : ''}`}><option value=""></option>{[...Array(31)].map((_, i) => (<option key={i + 1} value={String(i + 1)}>{i + 1}</option>))}<option value="末日">末日</option></select></div><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払日:</span><input className={`border-b border-gray-400 bg-transparent w-28 text-center focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.paymentDate || ''} onChange={e => updateHeader('paymentDate', e.target.value)} disabled={isLocked} list="payment-dates" placeholder="(選択/入力)" /></div></div><div className="flex flex-col gap-1"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払条件:</span><select className={`bg-transparent px-1 py-0.5 text-xs font-bold outline-none border border-transparent hover:border-gray-300 rounded ${isLocked ? 'input-locked' : ''}`} value={paymentConditionType} onChange={e => updatePaymentType(e.target.value)} disabled={isLocked}><option value="従来通り">従来通り</option><option value="従来通り以外">従来通り以外</option></select></div><input type="text" className={`w-full bg-transparent px-2 py-1 text-sm outline-none border-b border-gray-300 ${isLocked ? 'input-locked' : ''}`} placeholder="(詳細を入力)" value={paymentConditionDetail} onChange={e => updatePaymentDetail(e.target.value)} disabled={isLocked} list="payment-details" /></div></div>
+                      <div className="flex flex-col gap-2 px-2"><div className="flex items-center gap-3 flex-wrap"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">締め日:</span><select value={header.closingDate ? String(header.closingDate) : ''} onChange={e => updateHeader('closingDate', e.target.value)} disabled={isLocked} className={`border-b border-gray-400 bg-transparent font-bold outline-none w-16 text-center ${isLocked ? 'input-locked' : ''} ${errors.closingDate ? 'input-error' : ''}`}><option value=""></option>{[...Array(31)].map((_, i) => (<option key={i + 1} value={String(i + 1)}>{i + 1}</option>))}<option value="末日">末日</option></select></div><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払日:</span><input className={`border-b border-gray-400 bg-transparent w-28 text-center focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.paymentDate ? 'input-error' : ''}`} value={header.paymentDate || ''} onChange={e => updateHeader('paymentDate', e.target.value)} disabled={isLocked} list="payment-dates" placeholder="(選択/入力)" /></div></div><div className="flex flex-col gap-1"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払条件:</span><select className={`bg-transparent px-1 py-0.5 text-xs font-bold outline-none border border-transparent hover:border-gray-300 rounded ${isLocked ? 'input-locked' : ''}`} value={paymentConditionType} onChange={e => updatePaymentType(e.target.value)} disabled={isLocked}><option value="従来通り">従来通り</option><option value="従来通り以外">従来通り以外</option></select></div><input type="text" className={`w-full bg-transparent px-2 py-1 text-sm outline-none border-b border-gray-300 ${isLocked ? 'input-locked' : ''}`} placeholder="(詳細を入力)" value={paymentConditionDetail} onChange={e => updatePaymentDetail(e.target.value)} disabled={isLocked} list="payment-details" /></div></div>
                     </div>
                   </div>
                 </div>
@@ -687,7 +726,7 @@
                     <div className={`grid gap-x-2 text-center text-xs font-bold text-gray-600 mb-1 ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr_1fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_1fr]'}`}>
                       <div></div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">出荷日</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">納期</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">配送方法</div><div className="bg-gray-100 rounded py-0.5 border border-gray-200">時間帯</div>{mode !== 'rental' && <div className="bg-gray-100 rounded py-0.5 border border-gray-200">情報No</div>}<div className="bg-gray-100 rounded py-0.5 border border-gray-200">出荷No</div><div className="bg-orange-50 rounded py-0.5 border border-orange-200 text-orange-600">出荷指示確認</div>
                     </div>
-                    {[...Array(shippingRowCount)].map((_, i) => { const n = i + 1; return <div key={n} className={`grid gap-x-2 mb-1 items-center ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr_1fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_1fr]'}`}><div className="text-[10px] font-bold rounded-full bg-gray-100 w-5 h-5 flex items-center justify-center border border-gray-200">{n}</div><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`shipDate${n}`] || ''} onChange={e => updateHeader(`shipDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`deliveryDate${n}`] || ''} onChange={e => updateHeader(`deliveryDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input list="shipping-methods" className={`w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent ${n === 1 && errors.deliveryMethod1 ? 'input-error' : ''}`} value={header[`deliveryMethod${n}`] || ''} onChange={e => updateHeader(`deliveryMethod${n}`, e.target.value)} disabled={isLocked} /><select className="w-full text-center border-b border-gray-300 outline-none text-xs bg-transparent" value={header[`deliveryTime${n}`] || ''} onChange={e => updateHeader(`deliveryTime${n}`, e.target.value)} disabled={isLocked}><option value="">指定なし</option><option value="午前中">午前中</option><option value="14時～16時">14時～16時</option><option value="16時～18時">16時～18時</option><option value="18時以降">18時以降</option></select>{mode !== 'rental' && <input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`informationNo${n}`] || ''} onChange={e => updateHeader(`informationNo${n}`, e.target.value)} disabled={isLocked} />}<input className="w-full text-center border-b border-gray-300 outline-none text-sm font-mono bg-transparent" value={header[`shippingNo${n}`] || ''} onChange={e => updateHeader(`shippingNo${n}`, e.target.value)} disabled={isLocked} /><div className="flex items-stretch justify-center gap-1 px-1 py-0.5">{header[`shipConfirmName${n}`] ? (<span title={'1: ' + header['shipConfirmName' + n]} className="flex-1 flex items-center justify-center text-green-600 text-lg font-bold cursor-default select-none bg-green-50 border border-green-300 rounded">✓</span>) : (header[`shipDate${n}`] ? (<button onClick={() => handleRowShipConfirm(n)} className="print:hidden flex-1 flex items-center justify-center text-base py-1 bg-white border border-orange-300 text-orange-500 rounded hover:bg-orange-50 font-bold">✓1</button>) : (<span className="flex-1 flex items-center justify-center text-gray-200 text-lg select-none border border-transparent">✓</span>))}{header[`shipConfirm2Name${n}`] ? (<span title={'2: ' + header['shipConfirm2Name' + n]} className="flex-1 flex items-center justify-center text-green-600 text-lg font-bold cursor-default select-none bg-green-50 border border-green-300 rounded">✓</span>) : (header[`shipDate${n}`] ? (<button onClick={() => handleRowShipConfirm2(n)} className="print:hidden flex-1 flex items-center justify-center text-base py-1 bg-white border border-orange-300 text-orange-500 rounded hover:bg-orange-50 font-bold">✓2</button>) : (<span className="flex-1 flex items-center justify-center text-gray-200 text-lg select-none border border-transparent">✓</span>))}</div></div>; })}
+                    {[...Array(shippingRowCount)].map((_, i) => { const n = i + 1; return <div key={n} className={`grid gap-x-2 mb-1 items-center ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr_1fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_1fr]'}`}><div className="text-[10px] font-bold rounded-full bg-gray-100 w-5 h-5 flex items-center justify-center border border-gray-200">{n}</div><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`shipDate${n}`] || ''} onChange={e => updateHeader(`shipDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`deliveryDate${n}`] || ''} onChange={e => updateHeader(`deliveryDate${n}`, e.target.value)} disabled={isLocked} placeholder="MM/DD" /><input list="shipping-methods" className={`w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent ${n === 1 && errors.deliveryMethod1 ? 'input-error' : ''}`} value={header[`deliveryMethod${n}`] || ''} onChange={e => updateHeader(`deliveryMethod${n}`, e.target.value)} disabled={isLocked} /><select className="w-full text-center border-b border-gray-300 outline-none text-xs bg-transparent" value={header[`deliveryTime${n}`] || ''} onChange={e => updateHeader(`deliveryTime${n}`, e.target.value)} disabled={isLocked}><option value="">指定なし</option><option value="午前中">午前中</option><option value="14時～16時">14時～16時</option><option value="16時～18時">16時～18時</option><option value="18時以降">18時以降</option></select>{mode !== 'rental' && <input className="w-full text-center border-b border-gray-300 outline-none text-sm bg-transparent" value={header[`informationNo${n}`] || ''} onChange={e => updateHeader(`informationNo${n}`, e.target.value)} disabled={isLocked} />}<input className="w-full text-center border-b border-gray-300 outline-none text-sm font-mono bg-transparent" value={header[`shippingNo${n}`] || ''} onChange={e => updateHeader(`shippingNo${n}`, e.target.value)} disabled={isLocked} /><div className="flex items-stretch justify-center gap-1 px-1 py-0.5">{header[`shipConfirmName${n}`] ? (<span title={'1: ' + header['shipConfirmName' + n]} className="flex-1 flex items-center justify-center text-green-600 text-lg font-bold cursor-default select-none bg-green-50 border border-green-300 rounded">✓</span>) : (header[`shipDate${n}`] ? (<button onClick={() => handleRowShipConfirm(n)} className="print:hidden flex-1 flex items-center justify-center text-base py-1 bg-white border border-orange-300 text-orange-500 rounded hover:bg-orange-50 font-bold">✓</button>) : (<span className="flex-1 flex items-center justify-center text-gray-200 text-lg select-none border border-transparent">✓</span>))}{header[`shipConfirm2Name${n}`] ? (<span title={'2: ' + header['shipConfirm2Name' + n]} className="flex-1 flex items-center justify-center text-green-600 text-lg font-bold cursor-default select-none bg-green-50 border border-green-300 rounded">✓</span>) : (header[`shipDate${n}`] ? (<button onClick={() => handleRowShipConfirm2(n)} className="print:hidden flex-1 flex items-center justify-center text-base py-1 bg-white border border-orange-300 text-orange-500 rounded hover:bg-orange-50 font-bold">✓</button>) : (<span className="flex-1 flex items-center justify-center text-gray-200 text-lg select-none border border-transparent">✓</span>))}</div></div>; })}
                     <div className="text-center mt-1 print-hidden"><button onClick={addShippingRow} disabled={isLocked} className="text-blue-500 text-xs hover:underline"><Plus className="w-3 h-3 inline mr-1" />行を追加</button></div>
                 </div>
                 {mode !== 'communication' && <div className="border-2 border-black mb-4 flex h-16">
