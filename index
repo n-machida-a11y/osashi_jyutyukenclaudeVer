@@ -662,6 +662,18 @@
                         <option value="差替">【差替】</option>
                     </select>
                     {getStatusBadge()}
+                    {isTemporary && (
+                      <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 rounded px-2.5 py-1">
+                        <span className="text-[11px] font-bold text-amber-700 whitespace-nowrap">統合先受注No</span>
+                        <input
+                          type="text"
+                          className="border-b border-amber-400 bg-transparent outline-none text-sm font-mono w-20 text-center focus:border-amber-600"
+                          value={header.integratedOrderNo || ''}
+                          onChange={e => updateHeader('integratedOrderNo', e.target.value)}
+                          placeholder="例: 333"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-3">

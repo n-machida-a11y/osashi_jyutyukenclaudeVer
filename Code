@@ -628,6 +628,7 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     
     orderNoClient: getVal('注文No'),
     endUser: getVal('E/U'),
+    integratedOrderNo: getVal('統合先受注No'),
     
     closingDate: getVal('請求締日') || (custInfo.closingDate), 
     paymentDate: getVal('支払日') || convertCollectionDate(custInfo.collectionCode), 
@@ -691,6 +692,7 @@ function reverseMapHeader(h) {
     '担当営業': h.salesRep, // ※担当営業は保存時には文字情報として保存されるが、本来は担当者コードとして保存すべきかは要件による(今回はUIからの保存を優先)
     '注文No': h.orderNoClient,
     'E/U': h.endUser,
+    '統合先受注No': h.integratedOrderNo || '',
     '技術課依頼': h.internalMemo, // 保存項目追加
     '作成者承認': h.approvalCreator?.status === '済' ? '済' : '', 
     '本社事務承認': h.approvalStaff?.status === '済' ? '済' : '', // 本社事務承認を保存
