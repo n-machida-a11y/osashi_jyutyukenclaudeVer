@@ -399,7 +399,6 @@
             chk(!header.closingDate, 'closingDate', '締め日');
             chk(!header.paymentDate, 'paymentDate', '支払日');
             // モード依存
-            chk(mode === 'sales' && !header.salesDate, 'salesDate', '売上日');
             chk(mode === 'sales' && !header.headerSlipNo, 'headerSlipNo', '伝票No');
             chk(mode === 'rental' && !header.rentalId, 'rentalId', 'レンタルID');
             chk(mode === 'rental' && !header.siteName, 'siteName', '現場名');
@@ -704,7 +703,7 @@
                       <div className="flex items-center gap-4 flex-wrap">
                           {mode === 'sales' && (
                               <>
-                                  <div className="flex items-center"><span className="font-bold mr-2 text-sm">売上日</span><input type="text" value={header.salesDate || ''} onChange={e => updateHeader('salesDate', e.target.value)} disabled={isLocked} className={`font-mono border-b border-gray-300 w-24 text-center bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.salesDate ? 'input-error' : ''}`} /></div>
+                                  <div className="flex items-center"><span className="font-bold mr-2 text-sm">売上日</span><input type="text" value={header.salesDate || ''} onChange={e => updateHeader('salesDate', e.target.value)} disabled={isLocked} className={`font-mono border-b border-gray-300 w-24 text-center bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} /></div>
                                   <div className="flex items-center"><span className="font-bold mr-2 text-sm">伝票No</span><input type="text" value={header.headerSlipNo || ''} onChange={e => updateHeader('headerSlipNo', e.target.value)} disabled={isLocked} className={`font-mono border-b border-gray-300 w-24 text-center bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.headerSlipNo ? 'input-error' : ''}`} /></div>
                               </>
                           )}
