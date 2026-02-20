@@ -757,7 +757,7 @@ function mapItemData(row) {
         unitPrice: row['単価'], 
         amount: row['受注金額'], 
         costAmount: row['原価金額'], 
-        note: row['品名・製造№等'] || row['備考'], 
+        note: row['品名・製造№等'],
         transactionDate: formatDate(row['取引年月日']),
         // 新設項目の読み込み（列が存在しない場合はundefined/空になる）
         costPrice: (row._raw && row._raw[12]) ? row._raw[12] : (row['原価単価'] || row['原価'] || ''), // M列=12
