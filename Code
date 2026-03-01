@@ -604,7 +604,8 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     }
   }
 
-  // 出荷明細アプリ(JSON2)のconfirmName → 2nd✓(確認者)に反映
+  // 出荷明細アプリ(JSON2)の値をJSON優先で上書き反映
+  // 出荷明細アプリが納期・配送方法などを変更した場合も受注兼に反映される
   const json2Val = getVal('出荷配送詳細(JSON2)');
   if (json2Val) {
     try {
@@ -612,9 +613,13 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
       if (Array.isArray(parsed2)) {
         parsed2.forEach((item, idx) => {
           const n = idx + 1;
-          if (item.confirmName) {
-            ships[`shipConfirm2Name${n}`] = item.confirmName;
-          }
+          if (item.shipDate)       ships[`shipDate${n}`]       = item.shipDate;
+          if (item.deliveryDate)   ships[`deliveryDate${n}`]   = item.deliveryDate;
+          if (item.deliveryTime)   ships[`deliveryTime${n}`]   = item.deliveryTime;
+          if (item.deliveryMethod) ships[`deliveryMethod${n}`] = item.deliveryMethod;
+          if (item.informationNo)  ships[`informationNo${n}`]  = item.informationNo;
+          if (item.shippingNo)     ships[`shippingNo${n}`]     = item.shippingNo;
+          if (item.confirmName)    ships[`shipConfirm2Name${n}`] = item.confirmName;
         });
       }
     } catch(e) {}
