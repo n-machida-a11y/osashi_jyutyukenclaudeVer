@@ -391,7 +391,8 @@
         // 締め日・支払日の自動計算: shipDate1 が変わったとき再計算
         useEffect(() => {
             if (!header.shipDate1 || isLocked) return;
-            const closingStr = String(header.closingDate || '').trim();
+            // closingDaySetting（請求締日の繰り返し設定）を使って計算
+            const closingStr = String(header.closingDaySetting || header.closingDate || '').trim();
             if (!closingStr) return;
             // closingDate は "20"/"末日"/"YYYY/MM/DD"/"10日" など複数形式に対応
             const parseClosingDay = (s) => {

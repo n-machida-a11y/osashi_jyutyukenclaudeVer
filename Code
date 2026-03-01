@@ -641,7 +641,8 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     endUser: getVal('E/U'),
     integratedOrderNo: getVal('統合先受注No'),
     
-    closingDate: getVal('請求締日') || (custInfo.closingDate), 
+    closingDaySetting: getVal('請求締日') || (custInfo.closingDate) || '', // 繰り返しの日付設定（自動計算の入力値）
+    closingDate: getVal('締め日') || '', // 受注ごとの計算済み全日付
     paymentDate: getVal('支払日') || convertCollectionDate(custInfo.collectionCode), 
     collectionMethod: getVal('回収種別１'), 
     dataStatus: getVal('データステータス') || '作成中', 
@@ -684,7 +685,7 @@ function reverseMapHeader(h) {
     '直送先名': h.shipName,
     '直送先名２': h.shipName2,
     '先方担当者名': h.salesRepClient, 
-    '請求締日': h.closingDate, 
+    '締め日': h.closingDate, // 計算済み全日付を新列に保存（請求締日は触らない）
     '支払日': h.paymentDate, 
     '回収種別１': h.collectionMethod,
     '得意先住所(JSON)': JSON.stringify({ zipCode: h.customerZipCode || '', address: h.customerAddress || '', tel: h.customerTel || '', fax: h.customerFax || '' }),
