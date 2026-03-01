@@ -296,7 +296,34 @@ function getOrderData(orderNo, summaryCode) {
     const tax = Math.floor(subtotal * 0.1); 
     const totalCost = 0; // 自動計算しない（初期値なし）
 
-    const result = { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost }, shipmentHistory: shipmentHistoryList };
+    // 統合元受注の出荷データを取得（統合先として開かれた場合）
+    const integratedShipData = {};
+    try {
+      const srcStr = headerData.integratedSources;
+      if (srcStr) {
+        const srcNos = srcStr.split(',').map(s => cleanId(s)).filter(Boolean);
+        const hIdx = {}; headerValues.forEach((h, i) => { hIdx[String(h).trim()] = i; });
+        const j1Col = hIdx['出荷配送詳細(JSON)'], j2Col = hIdx['出荷配送詳細(JSON2)'];
+        srcNos.forEach(srcNo => {
+          for (let i = 1; i < data.length; i++) {
+            if (cleanId(data[i][keyColIndex]) !== srcNo) continue;
+            const j2 = j2Col !== undefined ? String(data[i][j2Col] || '') : '';
+            const j1 = j1Col !== undefined ? String(data[i][j1Col] || '') : '';
+            const jsonStr = j2 || j1;
+            if (jsonStr) { try {
+              const ships = JSON.parse(jsonStr);
+              if (Array.isArray(ships)) {
+                const valid = ships.filter(s => s.shipDate);
+                if (valid.length > 0) integratedShipData[srcNo] = valid;
+              }
+            } catch(e) {} }
+            break;
+          }
+        });
+      }
+    } catch(e) {}
+
+    const result = { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost }, shipmentHistory: shipmentHistoryList, integratedShipData: integratedShipData };
     try { cache.put(cacheKey, JSON.stringify(result), 10); } catch(e) {}
     return result;
   } catch (e) { return createMockData(orderNo, mode, [], "エラー: " + e.message); }
@@ -466,6 +493,42 @@ function saveOrderData(saveData) {
       updateOrAddRow(ss, SHEETS.CUSTOMER, '得意先コード', saveData.header.customerCode,
         { '得意先コード': saveData.header.customerCode, '得意先備考': saveData.header.customerNote });
     }
+
+    // 統合先受注Noの逆引き（統合元受注No）を自動管理
+    try {
+      const newTarget = cleanId(saveData.header.integratedOrderNo);
+      const hSheet = ss.getSheetByName(SHEETS.HEADER);
+      const hData = hSheet.getDataRange().getValues();
+      const hH = hData[0].map(h => String(h).trim());
+      const oIdx = hH.indexOf('受注No'), srcIdx = hH.indexOf('統合元受注No'), intIdx = hH.indexOf('統合先受注No');
+      if (srcIdx > -1) {
+        // 旧統合先を特定
+        let oldTarget = '';
+        for (let i = 1; i < hData.length; i++) {
+          if (cleanId(hData[i][oIdx]) === orderNo) { oldTarget = intIdx > -1 ? cleanId(String(hData[i][intIdx] || '')) : ''; break; }
+        }
+        // 旧統合先から自分を除去
+        if (oldTarget && oldTarget !== newTarget) {
+          for (let i = 1; i < hData.length; i++) {
+            if (cleanId(hData[i][oIdx]) === oldTarget) {
+              const list = String(hData[i][srcIdx] || '').split(',').map(s => cleanId(s)).filter(s => s && s !== orderNo);
+              hSheet.getRange(i + 1, srcIdx + 1).setValue(list.join(',')); break;
+            }
+          }
+        }
+        // 新統合先に自分を追加
+        if (newTarget) {
+          for (let i = 1; i < hData.length; i++) {
+            if (cleanId(hData[i][oIdx]) === newTarget) {
+              const list = String(hData[i][srcIdx] || '').split(',').map(s => cleanId(s)).filter(Boolean);
+              if (!list.includes(orderNo)) { list.push(orderNo); hSheet.getRange(i + 1, srcIdx + 1).setValue(list.join(',')); }
+              break;
+            }
+          }
+        }
+      }
+    } catch(e) {}
+
     return { success: true, message: "保存しました" };
   } catch(e) { return { success: false, message: "保存エラー: " + e.toString() }; }
 }
@@ -710,6 +773,7 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     orderNoClient: getVal('注文No'),
     endUser: getVal('E/U'),
     integratedOrderNo: getVal('統合先受注No'),
+    integratedSources: getVal('統合元受注No') || '', // 統合元受注Noのカンマ区切りリスト
     
     closingDaySetting: _daySetting,
     closingDate: _storedClose || (_preCalc && _preCalc.close) || _daySetting,
