@@ -603,7 +603,7 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     customerName: getVal('得意先名'), 
     
     // 得意先マスタから取得（受注固有の値があればそちらを優先）
-    branchName: custInfo.branchName || "",
+    branchName: getVal('支店名') || custInfo.branchName || "",
     ...(() => {
       const raw = getVal('得意先住所(JSON)');
       let ov = {};
