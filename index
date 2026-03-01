@@ -388,6 +388,39 @@
             if (header.internalMemo && header.internalMemo !== "") setTechReqEnabled(true);
         }, [header.internalMemo]);
 
+        // 支払日の自動計算: shipDate1 と closingDate が変わったとき再計算
+        useEffect(() => {
+            if (!header.shipDate1 || isLocked) return;
+            const closingStr = String(header.closingDate || '').trim();
+            if (!closingStr) return;
+            const shipDate = new Date(String(header.shipDate1).replace(/\//g, '-'));
+            if (isNaN(shipDate.getTime())) return;
+            const shipDay = shipDate.getDate();
+            const isLastDay = closingStr === '末日';
+            const closingDay = isLastDay ? null : parseInt(closingStr);
+            if (!isLastDay && (isNaN(closingDay) || closingDay < 1 || closingDay > 31)) return;
+            const getLastDayOfMonth = (y, m) => new Date(y, m + 1, 0).getDate();
+            const getActualDay = (y, m) => isLastDay ? getLastDayOfMonth(y, m) : Math.min(closingDay, getLastDayOfMonth(y, m));
+            const sy = shipDate.getFullYear(), sm = shipDate.getMonth();
+            // 締め日の実際の日にち（同月）
+            const closingDayThisMonth = getActualDay(sy, sm);
+            // 決済月の決定
+            let payYear, payMonth;
+            if (shipDay <= closingDayThisMonth) {
+                // 翌月が支払月
+                const d = new Date(sy, sm + 1, 1);
+                payYear = d.getFullYear(); payMonth = d.getMonth();
+            } else {
+                // 翌々月が支払月
+                const d = new Date(sy, sm + 2, 1);
+                payYear = d.getFullYear(); payMonth = d.getMonth();
+            }
+            const payDay = getActualDay(payYear, payMonth);
+            const fmt = (y, m, d) => `${y}/${String(m+1).padStart(2,'0')}/${String(d).padStart(2,'0')}`;
+            const newPayDate = fmt(payYear, payMonth, payDay);
+            if (header.paymentDate !== newPayDate) updateHeader('paymentDate', newPayDate);
+        }, [header.shipDate1, header.closingDate]);
+
         const periodMonths = useMemo(() => { if (!header.periodStartDate || !header.periodEndDate) return null; const start = new Date(header.periodStartDate), end = new Date(header.periodEndDate); if (isNaN(start.getTime()) || isNaN(end.getTime())) return null; return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1; }, [header.periodStartDate, header.periodEndDate]);
 
         const billingSummary = useMemo(() => {
