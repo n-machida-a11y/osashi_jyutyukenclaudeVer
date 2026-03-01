@@ -602,12 +602,20 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     customerCode: code, 
     customerName: getVal('得意先名'), 
     
-    // 得意先マスタから取得
-    branchName: custInfo.branchName || "", 
-    customerZipCode: custInfo.zipCode || "", 
-    customerAddress: (custInfo.address1 || "") + (custInfo.address2 || ""), 
-    customerTel: custInfo.tel || "", 
-    customerFax: custInfo.fax || "", 
+    // 得意先マスタから取得（受注固有の値があればそちらを優先）
+    branchName: custInfo.branchName || "",
+    ...(() => {
+      const raw = getVal('得意先住所(JSON)');
+      let ov = {};
+      if (raw) { try { ov = JSON.parse(raw); } catch(e) {} }
+      const m = custInfo;
+      return {
+        customerZipCode: ov.zipCode !== undefined ? ov.zipCode : (m.zipCode || ""),
+        customerAddress: ov.address !== undefined ? ov.address : ((m.address1 || "") + (m.address2 || "")),
+        customerTel:     ov.tel     !== undefined ? ov.tel     : (m.tel  || ""),
+        customerFax:     ov.fax     !== undefined ? ov.fax     : (m.fax  || ""),
+      };
+    })(),
     
     customerNote: customerNoteMap[code] || "", 
     
@@ -679,6 +687,7 @@ function reverseMapHeader(h) {
     '請求締日': h.closingDate, 
     '支払日': h.paymentDate, 
     '回収種別１': h.collectionMethod,
+    '得意先住所(JSON)': JSON.stringify({ zipCode: h.customerZipCode || '', address: h.customerAddress || '', tel: h.customerTel || '', fax: h.customerFax || '' }),
     '郵便番号': h.shipZipCode,
     '住所１': h.shipAddress,
     '住所２': h.shipAddress2,
