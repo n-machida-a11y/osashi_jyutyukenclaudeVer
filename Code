@@ -175,7 +175,7 @@ function generateOrderSheet(data) {
     const tempSheet = tempSs.getSheets()[0];
 
     const h = data.header;
-    const replacements = { "{受注No}": h.orderNo, "{見積書No}": h.estimateNo, "{受注日}": h.date, "{得意先名}": h.customerName, "{支店名}": h.branchName, "{郵便番号}": h.customerZipCode, "{得意先住所}": h.customerAddress, "{会社TEL}": h.customerTel, "{会社FAX}": h.customerFax, "{得意先備考}": h.customerNote, "{直送先名}": h.shipName, "{直送先住所}": (h.shipZipCode ? "〒" + h.shipZipCode + " " : "") + (h.shipAddress || "") + (h.shipAddress2 ? " " + h.shipAddress2 : ""), "{直送先TEL}": h.shipTel, "{直送先担当者名}": h.shipRep, "{請求締日}": h.closingDate, "{支払日}": h.paymentDate, "{回収種別}": h.collectionMethod, "{レンタルID}": h.rentalId, "{現場名}": h.siteName, "{期間開始}": h.periodStartDate, "{期間終了}": h.periodEndDate, "{作成担当}": h.approvalCreator?.name, "{確認担当}": h.approvalCheck?.name, "{課長}": h.approvalManager?.name, "{部長}": h.approvalDirector?.name, "{社長}": h.approvalPresident?.name };
+    const replacements = { "{受注No}": h.orderNo, "{見積書No}": h.estimateNo, "{受注日}": h.date, "{得意先名}": h.customerName, "{支店名}": h.branchName, "{郵便番号}": h.customerZipCode, "{得意先住所}": h.customerAddress, "{会社TEL}": h.customerTel, "{会社FAX}": h.customerFax, "{得意先備考}": h.customerNote, "{直送先名}": h.shipName + (h.shipName2 ? ' ' + h.shipName2 : ''), "{直送先住所}": (h.shipZipCode ? "〒" + h.shipZipCode + " " : "") + (h.shipAddress || "") + (h.shipAddress2 ? " " + h.shipAddress2 : ""), "{直送先TEL}": h.shipTel, "{直送先担当者名}": h.shipRep, "{請求締日}": h.closingDate, "{支払日}": h.paymentDate, "{回収種別}": h.collectionMethod, "{レンタルID}": h.rentalId, "{現場名}": h.siteName, "{期間開始}": h.periodStartDate, "{期間終了}": h.periodEndDate, "{作成担当}": h.approvalCreator?.name, "{確認担当}": h.approvalCheck?.name, "{課長}": h.approvalManager?.name, "{部長}": h.approvalDirector?.name, "{社長}": h.approvalPresident?.name };
 
     for (const [placeholder, value] of Object.entries(replacements)) { tempSheet.createTextFinder(placeholder).replaceAllWith((value === undefined || value === null) ? "" : String(value)); }
 
@@ -464,7 +464,7 @@ function _batchSaveRows(ss, sheetName, keyCol, orderCol, qtyCol, orderNo, dataRo
   for (let i = raw.length - 1; i >= 1; i--) {
     if (cleanId(raw[i][orderIdx]) !== orderNo) continue;
     const rowKey = String(raw[i][keyIdx]);
-    if (!submittedKeys.has(rowKey) && (qtyIdx === -1 || Number(raw[i][qtyIdx]) > 0)) {
+    if (!submittedKeys.has(rowKey)) {
       sheet.deleteRow(i + 1);
     }
   }
@@ -613,7 +613,8 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     
     // 直送先情報（受注データの指定列から取得）
     shipName: getVal('直送先名'), 
-    shipCode: getVal('直送先コード'), 
+    shipCode: getVal('直送先コード'),
+    shipName2: getVal('直送先名２'),
     // ユーザー指示: 郵便番号 住所１ 住所２ 会社TEL という列名から取ってきてほしい
     // 直送先住所欄には郵便番号入力欄がないため、住所テキストに結合して表示する
     shipZipCode: getVal('郵便番号'),
@@ -672,7 +673,8 @@ function reverseMapHeader(h) {
     '得意先名': h.customerName, 
     '支店名': h.branchName, 
     '見積書No': h.estimateNo, 
-    '直送先名': h.shipName, 
+    '直送先名': h.shipName,
+    '直送先名２': h.shipName2,
     '先方担当者名': h.salesRepClient, 
     '請求締日': h.closingDate, 
     '支払日': h.paymentDate, 
@@ -690,7 +692,8 @@ function reverseMapHeader(h) {
     '期間終了': h.periodEndDate, 
     '得意先備考': h.customerNote, 
     '売上日': h.salesDate, 
-    '伝票No': h.headerSlipNo, 
+    '伝票No': h.headerSlipNo,
+    '伝票Ｎｏ': h.headerSlipNo, // 全角列も同時クリア（商魂データ対応）
     '直送先コード': h.shipCode, 
     '原価合計': h.totalCost, 
     '担当営業': h.salesRep, // ※担当営業は保存時には文字情報として保存されるが、本来は担当者コードとして保存すべきかは要件による(今回はUIからの保存を優先)
