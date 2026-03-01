@@ -642,7 +642,7 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     integratedOrderNo: getVal('統合先受注No'),
     
     closingDaySetting: getVal('請求締日') || (custInfo.closingDate) || '', // 繰り返しの日付設定（自動計算の入力値）
-    closingDate: getVal('締め日') || '', // 受注ごとの計算済み全日付
+    closingDate: getVal('締め日') || getVal('請求締日') || (custInfo.closingDate) || '', // 計算済み全日付、未計算なら請求締日の設定値を初期値として表示
     paymentDate: getVal('支払日') || convertCollectionDate(custInfo.collectionCode), 
     collectionMethod: getVal('回収種別１'), 
     dataStatus: getVal('データステータス') || '作成中', 
