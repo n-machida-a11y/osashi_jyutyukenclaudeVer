@@ -703,7 +703,7 @@
                         <option value="差替">【差替】</option>
                     </select>
                     {getStatusBadge()}
-                    {isTemporary && (
+                    {(isTemporary || header.dataStatus === '差替') && (
                       <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-300 rounded px-2.5 py-1">
                         <span className="text-[11px] font-bold text-amber-700 whitespace-nowrap">統合先受注No</span>
                         <input
