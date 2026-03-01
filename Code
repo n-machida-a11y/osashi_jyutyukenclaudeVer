@@ -267,6 +267,30 @@ function getOrderData(orderNo, summaryCode) {
     }).filter(item => { return item.id && String(item.id).trim() !== ""; }); // 数量0でもIDがあれば表示する
     
     const scheduleData = getRelatedData(SHEETS.SCHEDULE).map(mapScheduleData), remarksData = getRelatedData(SHEETS.REMARKS).map(mapRemarkData), headerData = mapHeaderData(headerRowObj, mode, staffMap, customerNoteMap, customerMasterMap);
+    // 出荷伝票履歴の「作成者」+「対象タブ」から1st✓(shipConfirmName)を設定
+    try {
+      const histSheet = ss.getSheetByName(SHEETS.HISTORY);
+      if (histSheet) {
+        const hVals = histSheet.getDataRange().getValues();
+        const hH = hVals[0].map(h => String(h).trim());
+        const hOIdx = hH.indexOf('受注No'), hCIdx = hH.indexOf('作成者'), hTIdx = hH.indexOf('対象タブ'), hDIdx = hH.indexOf('作成日時');
+        const creatorByTab = {};
+        for (let i = 1; i < hVals.length; i++) {
+          if (hOIdx !== -1 && cleanId(hVals[i][hOIdx]) !== String(orderNo)) continue;
+          const creator = hCIdx > -1 ? String(hVals[i][hCIdx] || '').trim() : '';
+          const tabStr = hTIdx > -1 ? String(hVals[i][hTIdx]).trim() : '';
+          const tabIdx = tabStr !== '' ? parseInt(tabStr) : -1;
+          if (creator && !isNaN(tabIdx) && tabIdx >= 0) {
+            creatorByTab[tabIdx] = { name: creator, date: hDIdx > -1 ? String(hVals[i][hDIdx] || '').split(' ')[0] : '' };
+          }
+        }
+        Object.entries(creatorByTab).forEach(([t, info]) => {
+          const n = parseInt(t) + 1;
+          headerData[`shipConfirmName${n}`] = info.name;
+          headerData[`shipConfirmDate${n}`] = info.date;
+        });
+      }
+    } catch(e) {}
     // 合計計算（原価合計も追加）
     const subtotal = itemsData.reduce((sum, i) => sum + (Number(i.amount)||0), 0) + scheduleData.reduce((sum, s) => sum + (Number(s.amount)||0), 0);
     const tax = Math.floor(subtotal * 0.1); 
@@ -580,8 +604,7 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     }
   }
 
-  // 出荷明細アプリ(JSON2)のconfirmNameを受注兼のshipConfirmNameに反映
-  // 出荷明細アプリが出荷処理するとJSON2に書き込まれるため、それを読み込んで自動✓表示
+  // 出荷明細アプリ(JSON2)のconfirmName → 2nd✓(確認者)に反映
   const json2Val = getVal('出荷配送詳細(JSON2)');
   if (json2Val) {
     try {
@@ -590,13 +613,13 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
         parsed2.forEach((item, idx) => {
           const n = idx + 1;
           if (item.confirmName) {
-            ships[`shipConfirmName${n}`] = item.confirmName;
-            ships[`shipConfirmDate${n}`] = item.confirmDate || '';
+            ships[`shipConfirm2Name${n}`] = item.confirmName;
           }
         });
       }
     } catch(e) {}
   }
+  // 1st✓(作成者)は getOrderData 側で出荷伝票履歴から設定する
 
   // FM列から情報No・出荷Noを上書き（JSON/フォールバックより優先して最終的に適用）
   for (let i = 1; i <= 10; i++) {
