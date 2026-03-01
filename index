@@ -388,38 +388,44 @@
             if (header.internalMemo && header.internalMemo !== "") setTechReqEnabled(true);
         }, [header.internalMemo]);
 
-        // 支払日の自動計算: shipDate1 と closingDate が変わったとき再計算
+        // 締め日・支払日の自動計算: shipDate1 が変わったとき再計算
         useEffect(() => {
             if (!header.shipDate1 || isLocked) return;
             const closingStr = String(header.closingDate || '').trim();
             if (!closingStr) return;
+            // closingDate は "20"/"末日"/"YYYY/MM/DD"/"10日" など複数形式に対応
+            const parseClosingDay = (s) => {
+                if (s === '末日') return 'last';
+                const jpMatch = s.match(/^(\d+)日$/); if (jpMatch) return parseInt(jpMatch[1]);
+                const dateMatch = s.match(/\d{4}[\/\-]\d{1,2}[\/\-](\d{1,2})/); if (dateMatch) return parseInt(dateMatch[1]);
+                const n = parseInt(s); return (!isNaN(n) && n >= 1 && n <= 31) ? n : null;
+            };
+            const closingDay = parseClosingDay(closingStr);
+            if (closingDay === null) return;
             const shipDate = new Date(String(header.shipDate1).replace(/\//g, '-'));
             if (isNaN(shipDate.getTime())) return;
             const shipDay = shipDate.getDate();
-            const isLastDay = closingStr === '末日';
-            const closingDay = isLastDay ? null : parseInt(closingStr);
-            if (!isLastDay && (isNaN(closingDay) || closingDay < 1 || closingDay > 31)) return;
+            const isLastDay = closingDay === 'last';
             const getLastDayOfMonth = (y, m) => new Date(y, m + 1, 0).getDate();
             const getActualDay = (y, m) => isLastDay ? getLastDayOfMonth(y, m) : Math.min(closingDay, getLastDayOfMonth(y, m));
             const sy = shipDate.getFullYear(), sm = shipDate.getMonth();
-            // 締め日の実際の日にち（同月）
-            const closingDayThisMonth = getActualDay(sy, sm);
-            // 決済月の決定
-            let payYear, payMonth;
-            if (shipDay <= closingDayThisMonth) {
-                // 翌月が支払月
-                const d = new Date(sy, sm + 1, 1);
-                payYear = d.getFullYear(); payMonth = d.getMonth();
+            // 締め日月の決定
+            let closeYear, closeMonth;
+            if (shipDay <= getActualDay(sy, sm)) {
+                closeYear = sy; closeMonth = sm;
             } else {
-                // 翌々月が支払月
-                const d = new Date(sy, sm + 2, 1);
-                payYear = d.getFullYear(); payMonth = d.getMonth();
+                const d = new Date(sy, sm + 1, 1); closeYear = d.getFullYear(); closeMonth = d.getMonth();
             }
-            const payDay = getActualDay(payYear, payMonth);
+            const closeDay = getActualDay(closeYear, closeMonth);
+            // 支払日 = 締め日の翌月
+            const pd = new Date(closeYear, closeMonth + 1, 1);
+            const payDay = getActualDay(pd.getFullYear(), pd.getMonth());
             const fmt = (y, m, d) => `${y}/${String(m+1).padStart(2,'0')}/${String(d).padStart(2,'0')}`;
-            const newPayDate = fmt(payYear, payMonth, payDay);
+            const newCloseDate = fmt(closeYear, closeMonth, closeDay);
+            const newPayDate = fmt(pd.getFullYear(), pd.getMonth(), payDay);
+            if (header.closingDate !== newCloseDate) updateHeader('closingDate', newCloseDate);
             if (header.paymentDate !== newPayDate) updateHeader('paymentDate', newPayDate);
-        }, [header.shipDate1, header.closingDate]);
+        }, [header.shipDate1]);
 
         const periodMonths = useMemo(() => { if (!header.periodStartDate || !header.periodEndDate) return null; const start = new Date(header.periodStartDate), end = new Date(header.periodEndDate); if (isNaN(start.getTime()) || isNaN(end.getTime())) return null; return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1; }, [header.periodStartDate, header.periodEndDate]);
 
@@ -849,7 +855,7 @@
                     {(mode === 'rental' || mode === 'communication') && <div className="bg-yellow-50 border border-yellow-200 p-3 my-2 rounded-sm flex items-center gap-4"><div className="bg-label px-2 py-0.5 rounded text-[10px] font-bold border border-gray-300">期間</div><div className="flex items-center gap-2"><input type="date" className={`bg-transparent border-b border-gray-400 font-mono text-sm ${isLocked ? 'input-locked' : ''}`} value={header.periodStartDate || ''} onChange={e => updateHeader('periodStartDate', e.target.value)} disabled={isLocked} /><span>～</span><input type="date" className={`bg-transparent border-b border-gray-400 font-mono text-sm ${isLocked ? 'input-locked' : ''}`} value={header.periodEndDate || ''} onChange={e => updateHeader('periodEndDate', e.target.value)} disabled={isLocked} /></div>{periodMonths !== null && <span className="text-blue-700 font-bold text-xs whitespace-nowrap">全 {periodMonths} ヶ月</span>}<button onClick={generateSchedule} className={`bg-white border border-blue-300 text-blue-600 px-3 py-1 rounded text-xs font-bold hover:bg-blue-50 flex items-center gap-1 ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`} disabled={isLocked}><Calculator className="w-3 h-3" /> 生成</button></div>}
                     <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-sm">
                       <div className="text-xs bg-label px-2 py-0.5 rounded font-bold border border-gray-300 w-max mb-2">売上先の集金条件</div>
-                      <div className="flex flex-col gap-2 px-2"><div className="flex items-center gap-3 flex-wrap"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">締め日:</span><select value={header.closingDate ? String(header.closingDate) : ''} onChange={e => updateHeader('closingDate', e.target.value)} disabled={isLocked} className={`border-b border-gray-400 bg-transparent font-bold outline-none w-16 text-center ${isLocked ? 'input-locked' : ''} ${errors.closingDate ? 'input-error' : ''}`}><option value=""></option>{[...Array(31)].map((_, i) => (<option key={i + 1} value={String(i + 1)}>{i + 1}</option>))}<option value="末日">末日</option></select></div><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払日:</span><input className={`border-b border-gray-400 bg-transparent w-28 text-center focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.paymentDate ? 'input-error' : ''}`} value={header.paymentDate || ''} onChange={e => updateHeader('paymentDate', e.target.value)} disabled={isLocked} list="payment-dates" placeholder="(選択/入力)" /></div></div><div className="flex flex-col gap-1"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払条件:</span><select className={`bg-transparent px-1 py-0.5 text-xs font-bold outline-none border border-transparent hover:border-gray-300 rounded ${isLocked ? 'input-locked' : ''}`} value={header.paymentConditionType || '従来通り'} onChange={e => updatePaymentType(e.target.value)} disabled={isLocked}><option value="従来通り">従来通り</option><option value="従来通り以外">従来通り以外</option></select></div><input type="text" className={`w-full bg-transparent px-2 py-1 text-sm outline-none border-b border-gray-300 ${isLocked ? 'input-locked' : ''} ${errors.paymentConditionDetail ? 'input-error' : ''}`} placeholder="(詳細を入力)" value={header.paymentConditionDetail || ''} onChange={e => { if (errors.paymentConditionDetail) setErrors({...errors, paymentConditionDetail: false}); updatePaymentDetail(e.target.value); }} disabled={isLocked} list="payment-details" /></div></div>
+                      <div className="flex flex-col gap-2 px-2"><div className="flex items-center gap-3 flex-wrap"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">締め日:</span><input type="text" value={header.closingDate ? String(header.closingDate) : ''} onChange={e => updateHeader('closingDate', e.target.value)} disabled={isLocked} className={`border-b border-gray-400 bg-transparent font-bold outline-none w-28 text-center ${isLocked ? 'input-locked' : ''} ${errors.closingDate ? 'input-error' : ''}`} placeholder="20 / 末日" /></div><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払日:</span><input className={`border-b border-gray-400 bg-transparent w-28 text-center focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.paymentDate ? 'input-error' : ''}`} value={header.paymentDate || ''} onChange={e => updateHeader('paymentDate', e.target.value)} disabled={isLocked} list="payment-dates" placeholder="(選択/入力)" /></div></div><div className="flex flex-col gap-1"><div className="flex items-center gap-2"><span className="text-xs font-bold whitespace-nowrap">支払条件:</span><select className={`bg-transparent px-1 py-0.5 text-xs font-bold outline-none border border-transparent hover:border-gray-300 rounded ${isLocked ? 'input-locked' : ''}`} value={header.paymentConditionType || '従来通り'} onChange={e => updatePaymentType(e.target.value)} disabled={isLocked}><option value="従来通り">従来通り</option><option value="従来通り以外">従来通り以外</option></select></div><input type="text" className={`w-full bg-transparent px-2 py-1 text-sm outline-none border-b border-gray-300 ${isLocked ? 'input-locked' : ''} ${errors.paymentConditionDetail ? 'input-error' : ''}`} placeholder="(詳細を入力)" value={header.paymentConditionDetail || ''} onChange={e => { if (errors.paymentConditionDetail) setErrors({...errors, paymentConditionDetail: false}); updatePaymentDetail(e.target.value); }} disabled={isLocked} list="payment-details" /></div></div>
                     </div>
                   </div>
                 </div>
