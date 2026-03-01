@@ -512,12 +512,7 @@
         const updateData = (updates) => { if (!isLocked) onChange({ ...data, ...updates }); };
         const updateHeader = (key, val) => {
             if (errors[key]) setErrors({...errors, [key]: false});
-            const newHeader = { ...header, [key]: val };
-            if (key.startsWith('shipDate')) {
-                const latest = findLatestShipDate(newHeader);
-                if (latest) newHeader.paymentDate = calcPaymentDateFromShipDate(latest);
-            }
-            updateData({ header: newHeader });
+            updateData({ header: { ...header, [key]: val } });
         };
         const updatePaymentType = (val) => updateHeader('paymentConditionType', val);
         const updatePaymentDetail = (val) => updateHeader('paymentConditionDetail', val);
@@ -878,8 +873,8 @@
                       ships.map((ship, idx) => (
                         <div key={`int-${srcNo}-${idx}`} className={`grid gap-x-2 mb-1 items-center bg-blue-50/60 border-t border-blue-200 ${mode === 'sales' ? 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_0.7fr_1fr]' : 'grid-cols-[20px_1fr_1fr_1fr_1fr_0.7fr_1fr]'}`}>
                           <div className="text-[9px] text-blue-400 flex items-center justify-center">⤷</div>
-                          <div className="p-1 flex flex-col items-center">
-                            <span className="text-[9px] font-bold text-blue-600 bg-blue-100 px-1 rounded font-mono leading-tight">{srcNo}</span>
+                          <div className="p-1 flex items-center gap-1">
+                            <span className="text-[9px] font-bold text-blue-600 bg-blue-100 px-1 rounded font-mono leading-tight whitespace-nowrap">{srcNo}</span>
                             <span className="text-xs font-mono text-center leading-tight">{ship.shipDate || '-'}</span>
                           </div>
                           <div className="text-xs font-mono text-center p-1">{ship.deliveryDate || '-'}</div>
