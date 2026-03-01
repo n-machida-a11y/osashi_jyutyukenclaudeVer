@@ -755,12 +755,12 @@ function reverseMapHeader(h) {
     '技術課依頼': h.internalMemo, // 保存項目追加
     '支払条件種別': h.paymentConditionType,
     '支払条件詳細': h.paymentConditionDetail,
-    '作成者承認': h.approvalCreator?.status === '済' ? '済' : '', 
-    '本社事務承認': h.approvalStaff?.status === '済' ? '済' : '', // 本社事務承認を保存
-    '営業担当者承認': h.approvalCheck?.status === '済' ? '済' : '', 
-    '課長承認': h.approvalManager?.status === '済' ? '済' : '', 
-    '部長承認': h.approvalDirector?.status === '済' ? '済' : '', 
-    '社長承認': h.approvalPresident?.status === '済' ? '済' : '',
+    '作成者承認': h.approvalCreator?.status === '済' ? (h.approvalCreator?.name || '済') : '',
+    '本社事務承認': h.approvalStaff?.status === '済' ? (h.approvalStaff?.name || '済') : '',
+    '営業担当者承認': h.approvalCheck?.status === '済' ? (h.approvalCheck?.name || '済') : '',
+    '課長承認': h.approvalManager?.status === '済' ? (h.approvalManager?.name || '済') : '',
+    '部長承認': h.approvalDirector?.status === '済' ? (h.approvalDirector?.name || '済') : '',
+    '社長承認': h.approvalPresident?.status === '済' ? (h.approvalPresident?.name || '済') : '',
     '出荷指示確認者': h.shipmentInstructionConfirm?.name || '',
     '出荷指示確認日': h.shipmentInstructionConfirm?.date || '',
     '出荷配送詳細(JSON)': '' // 初期化
