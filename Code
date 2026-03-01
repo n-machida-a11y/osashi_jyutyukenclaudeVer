@@ -175,7 +175,7 @@ function generateOrderSheet(data) {
     const tempSheet = tempSs.getSheets()[0];
 
     const h = data.header;
-    const replacements = { "{受注No}": h.orderNo, "{見積書No}": h.estimateNo, "{受注日}": h.date, "{得意先名}": h.customerName, "{支店名}": h.branchName, "{郵便番号}": h.customerZipCode, "{得意先住所}": h.customerAddress, "{会社TEL}": h.customerTel, "{会社FAX}": h.customerFax, "{得意先備考}": h.customerNote, "{直送先名}": h.shipName, "{直送先住所}": h.shipAddress, "{直送先TEL}": h.shipTel, "{直送先担当者名}": h.shipRep, "{請求締日}": h.closingDate, "{支払日}": h.paymentDate, "{回収種別}": h.collectionMethod, "{レンタルID}": h.rentalId, "{現場名}": h.siteName, "{期間開始}": h.periodStartDate, "{期間終了}": h.periodEndDate, "{作成担当}": h.approvalCreator?.name, "{確認担当}": h.approvalCheck?.name, "{課長}": h.approvalManager?.name, "{部長}": h.approvalDirector?.name, "{社長}": h.approvalPresident?.name };
+    const replacements = { "{受注No}": h.orderNo, "{見積書No}": h.estimateNo, "{受注日}": h.date, "{得意先名}": h.customerName, "{支店名}": h.branchName, "{郵便番号}": h.customerZipCode, "{得意先住所}": h.customerAddress, "{会社TEL}": h.customerTel, "{会社FAX}": h.customerFax, "{得意先備考}": h.customerNote, "{直送先名}": h.shipName, "{直送先住所}": (h.shipZipCode ? "〒" + h.shipZipCode + " " : "") + (h.shipAddress || "") + (h.shipAddress2 ? " " + h.shipAddress2 : ""), "{直送先TEL}": h.shipTel, "{直送先担当者名}": h.shipRep, "{請求締日}": h.closingDate, "{支払日}": h.paymentDate, "{回収種別}": h.collectionMethod, "{レンタルID}": h.rentalId, "{現場名}": h.siteName, "{期間開始}": h.periodStartDate, "{期間終了}": h.periodEndDate, "{作成担当}": h.approvalCreator?.name, "{確認担当}": h.approvalCheck?.name, "{課長}": h.approvalManager?.name, "{部長}": h.approvalDirector?.name, "{社長}": h.approvalPresident?.name };
 
     for (const [placeholder, value] of Object.entries(replacements)) { tempSheet.createTextFinder(placeholder).replaceAllWith((value === undefined || value === null) ? "" : String(value)); }
 
@@ -616,8 +616,10 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     shipCode: getVal('直送先コード'), 
     // ユーザー指示: 郵便番号 住所１ 住所２ 会社TEL という列名から取ってきてほしい
     // 直送先住所欄には郵便番号入力欄がないため、住所テキストに結合して表示する
-    shipAddress: (getVal('郵便番号') ? "〒" + getVal('郵便番号') + " " : "") + (getVal('住所１') || "") + (getVal('住所２') || ""), 
-    shipTel: getVal('会社TEL'), 
+    shipZipCode: getVal('郵便番号'),
+    shipAddress: getVal('住所１'),
+    shipAddress2: getVal('住所２'),
+    shipTel: getVal('会社TEL'),
     shipRep: getVal('直送先担当者名') || "", 
     
     salesRepInternalMain: salesRepName,
@@ -675,10 +677,10 @@ function reverseMapHeader(h) {
     '請求締日': h.closingDate, 
     '支払日': h.paymentDate, 
     '回収種別１': h.collectionMethod,
-    '郵便番号': '',       // 直送先住所は住所１へ一本化するためクリア
-    '住所１': h.shipAddress,  // 直送先住所を保存
-    '住所２': '',         // 住所１に統合するためクリア
-    '会社TEL': h.shipTel, // 直送先TELを保存（読み込みと同じ列に統一）
+    '郵便番号': h.shipZipCode,
+    '住所１': h.shipAddress,
+    '住所２': h.shipAddress2,
+    '会社TEL': h.shipTel,
     'データステータス': h.dataStatus,
     // 個別の '配送方法' 等のカラム書き込みは廃止し、JSONへ統合
     '直送先担当者名': h.shipRep, 
