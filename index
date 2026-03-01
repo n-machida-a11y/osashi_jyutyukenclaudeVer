@@ -141,7 +141,7 @@
         return <input type="text" className={`${className} text-${textAlign} ${isMasked ? 'text-gray-300' : ''} ${readOnly ? 'input-locked' : ''}`} value={displayValue} onChange={(e) => { if (isMasked || readOnly) return; let v = e.target.value.replace(/,/g, '').replace(suffix, '').replace(/[０-９]/g, (s) => String.fromCharCode(s.charCodeAt(0) - 0xFEE0)); if (v === '' || !isNaN(Number(v))) onChange(v); }} onFocus={() => !readOnly && !isMasked && setIsFocused(true)} onBlur={() => setIsFocused(false)} placeholder={placeholder} readOnly={readOnly || isMasked}/>;
       };
 
-      const ProductSearchInput = ({ value, onSelect, className, readOnly, placeholder }) => {
+      const ProductSearchInput = ({ value, onSelect, onNameChange, className, readOnly, placeholder }) => {
         const [query, setQuery] = useState(value || '');
         const [results, setResults] = useState([]);
         const [showResults, setShowResults] = useState(false);
@@ -194,6 +194,7 @@
                         if(!readOnly) handleSearch(e.target.value);
                     }}
                     onFocus={() => !readOnly && query && setShowResults(true)}
+                    onBlur={() => { if (!readOnly && onNameChange) onNameChange(query); }}
                     placeholder={placeholder}
                     readOnly={readOnly}
                 />
@@ -869,7 +870,7 @@
                             <input className={`w-full text-center bg-transparent outline-none text-xs font-mono ${items[i].shipped ? 'text-green-600 font-bold' : ''}`} value={row.transactionDate || ''} onChange={e => updateItem(i, 'transactionDate', e.target.value)} placeholder="MM/DD" readOnly={isLocked} />
                         </div>
                         <div className="border-r border-black p-1 pl-3 h-full flex items-center">
-                            <ProductSearchInput className={`w-full bg-transparent outline-none font-medium ${isLocked ? 'text-gray-500' : ''}`} value={row.productName || ''} onSelect={(item) => handleProductSelect(i, item)} readOnly={isLocked} placeholder="" />
+                            <ProductSearchInput className={`w-full bg-transparent outline-none font-medium ${isLocked ? 'text-gray-500' : ''}`} value={row.productName || ''} onSelect={(item) => handleProductSelect(i, item)} onNameChange={(name) => updateItem(i, 'productName', name)} readOnly={isLocked} placeholder="" />
                         </div>
                         <div className="border-r border-black p-1 flex items-center">
                             <NumberInput className="w-full bg-transparent outline-none font-mono" value={row.quantity || ''} onChange={v => updateItem(i, 'quantity', v)} readOnly={isLocked} />
