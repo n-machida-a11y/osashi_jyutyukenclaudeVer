@@ -273,7 +273,7 @@ function getOrderData(orderNo, summaryCode) {
     const totalCost = 0; // 自動計算しない（初期値なし）
 
     const result = { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost }, shipmentHistory: shipmentHistoryList };
-    try { cache.put(cacheKey, JSON.stringify(result), 60); } catch(e) {}
+    try { cache.put(cacheKey, JSON.stringify(result), 10); } catch(e) {}
     return result;
   } catch (e) { return createMockData(orderNo, mode, [], "エラー: " + e.message); }
 }
@@ -655,9 +655,11 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     
     salesDate: formatDate(row['売上日']),
     // 伝票Noの取得を強化（半角・全角）
-    headerSlipNo: getVal('伝票No') || getVal('伝票Ｎｏ'), 
-    totalCost: row['原価合計'] || '', 
-    ...ships 
+    headerSlipNo: getVal('伝票No') || getVal('伝票Ｎｏ'),
+    totalCost: row['原価合計'] || '',
+    paymentConditionType: getVal('支払条件種別') || '従来通り',
+    paymentConditionDetail: getVal('支払条件詳細'),
+    ...ships
   };
 }
 
@@ -694,6 +696,8 @@ function reverseMapHeader(h) {
     'E/U': h.endUser,
     '統合先受注No': h.integratedOrderNo || '',
     '技術課依頼': h.internalMemo, // 保存項目追加
+    '支払条件種別': h.paymentConditionType,
+    '支払条件詳細': h.paymentConditionDetail,
     '作成者承認': h.approvalCreator?.status === '済' ? '済' : '', 
     '本社事務承認': h.approvalStaff?.status === '済' ? '済' : '', // 本社事務承認を保存
     '営業担当者承認': h.approvalCheck?.status === '済' ? '済' : '', 
