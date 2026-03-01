@@ -674,14 +674,14 @@ function reverseMapHeader(h) {
     '先方担当者名': h.salesRepClient, 
     '請求締日': h.closingDate, 
     '支払日': h.paymentDate, 
-    '回収種別１': h.collectionMethod, 
-    '郵便番号': h.customerZipCode, 
-    '住所１': h.customerAddress, 
-    '会社TEL': h.customerTel, 
-    'データステータス': h.dataStatus, 
+    '回収種別１': h.collectionMethod,
+    '郵便番号': '',       // 直送先住所は住所１へ一本化するためクリア
+    '住所１': h.shipAddress,  // 直送先住所を保存
+    '住所２': '',         // 住所１に統合するためクリア
+    '会社TEL': h.shipTel, // 直送先TELを保存（読み込みと同じ列に統一）
+    'データステータス': h.dataStatus,
     // 個別の '配送方法' 等のカラム書き込みは廃止し、JSONへ統合
     '直送先担当者名': h.shipRep, 
-    '直送先TEL': h.shipTel, 
     'レンタルID': h.rentalId, 
     '現場名': h.siteName, 
     '期間開始': h.periodStartDate, 

@@ -806,7 +806,7 @@
                        <div className="flex justify-between items-start mb-2">
                            <div className="flex items-center gap-2">
                                <div className="text-xs bg-label px-3 py-0.5 rounded font-bold border border-gray-300 w-max">直送先</div>
-                               <div className="text-xs font-mono text-gray-500">{header.shipCode}</div>
+                               <input className={`text-xs font-mono text-gray-500 bg-transparent outline-none border-b border-transparent hover:border-gray-300 focus:border-gray-400 w-20 ${isLocked ? 'input-locked' : ''}`} value={header.shipCode || ''} onChange={e => updateHeader('shipCode', e.target.value)} disabled={isLocked} placeholder="直送先コード" />
                            </div>
                            <input className={`font-bold border-b text-sm w-1/2 focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.shipRep ? 'input-error' : ''}`} value={header.shipRep || ''} onChange={e => updateHeader('shipRep', e.target.value)} disabled={isLocked} placeholder="直送先担当者名" />
                        </div>
