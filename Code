@@ -622,8 +622,8 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
       if (Array.isArray(parsed)) {
         parsed.forEach((item, idx) => {
           const n = idx + 1;
-          ships[`shipDate${n}`] = item.shipDate || "";
-          ships[`deliveryDate${n}`] = item.deliveryDate || "";
+          ships[`shipDate${n}`] = padDateStr(item.shipDate || "");
+          ships[`deliveryDate${n}`] = padDateStr(item.deliveryDate || "");
           ships[`deliveryTime${n}`] = item.deliveryTime || "";
           ships[`informationNo${n}`] = item.informationNo || "";
           ships[`shippingNo${n}`] = item.shippingNo || "";
@@ -928,6 +928,7 @@ function mapItemData(row) {
 function mapScheduleData(row) { return { id: row['請求ID'], count: row['回数'], billingDate: formatDate(row['請求売上日']), amount: row['請求金額'], costReference: row['原価金額'], slipNo: row['伝票No'], closingDate: formatDate(row['締め日']), checkStatus: row['チェック状況'], rowOrderNo: row['行受注No'], note: row['備考'] }; }
 function mapRemarkData(row) { return { id: row['備考No'], category: row['カテゴリ'], content: row['備考'], date: formatDate(row['日時']), status: row['状況'] || '', mailSent: row['メール送付'] || '', additionalCC: row['追加CC'] || '' }; }
 function formatDate(val) { if (!val) return ""; if (val instanceof Date) return Utilities.formatDate(val, Session.getScriptTimeZone(), "yyyy/MM/dd"); return String(val); }
+function padDateStr(s) { if (!s) return s; const p = String(s).split(/[\/\-]/); if (p.length < 3 || p[0].length !== 4) return s; return p[0] + '/' + p[1].padStart(2, '0') + '/' + p[2].padStart(2, '0'); }
 
 function getStaffEmails() {
   try {
