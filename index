@@ -353,13 +353,20 @@
             const prevScrollY = window.scrollY;
             window.scrollTo(0, 0);
             await document.fonts.ready;
-            const canvas = await html2canvas(formRef.current, {
+            const el = formRef.current;
+            const canvas = await html2canvas(el, {
               scale: 2,
               useCORS: true,
               allowTaint: false,
               backgroundColor: '#ffffff',
               logging: false,
               foreignObjectRendering: true,
+              x: 0,
+              y: 0,
+              width: el.scrollWidth,
+              height: el.scrollHeight,
+              windowWidth: document.documentElement.scrollWidth,
+              windowHeight: document.documentElement.scrollHeight,
               onclone: (clonedDoc) => {
                 // ボタン類を非表示にするがレイアウトは保持（visibilityでスペース維持）
                 clonedDoc.querySelectorAll('.print-hidden').forEach(el => {
