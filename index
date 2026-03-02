@@ -359,6 +359,7 @@
               allowTaint: false,
               backgroundColor: '#ffffff',
               logging: false,
+              foreignObjectRendering: true,
               onclone: (clonedDoc) => {
                 // ボタン類を非表示にするがレイアウトは保持（visibilityでスペース維持）
                 clonedDoc.querySelectorAll('.print-hidden').forEach(el => {
