@@ -399,9 +399,11 @@
             };
             const closingDay = parseClosingDay(closingStr);
             if (closingDay === null) return;
-            const sdm = String(header.shipDate1).match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
-            if (!sdm) return;
-            const shipDate = new Date(+sdm[1], +sdm[2] - 1, +sdm[3]);
+            const sdParts = String(header.shipDate1).split(/[\/\-]/);
+            if (sdParts.length < 3 || sdParts[0].length !== 4) return;
+            const [sdY, sdM, sdD] = sdParts.map(Number);
+            if (!sdY || !sdM || !sdD) return;
+            const shipDate = new Date(sdY, sdM - 1, sdD);
             if (isNaN(shipDate.getTime())) return;
             const shipDay = shipDate.getDate();
             const isLastDay = closingDay === 'last';
