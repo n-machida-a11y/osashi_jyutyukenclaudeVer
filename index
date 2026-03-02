@@ -349,17 +349,15 @@
         const handleSaveImage = async () => {
           if (!formRef.current || typeof html2canvas === 'undefined') { showAlert('画像保存機能が利用できません。'); return; }
           try {
+            const prevScrollX = window.scrollX;
+            const prevScrollY = window.scrollY;
+            window.scrollTo(0, 0);
             const canvas = await html2canvas(formRef.current, {
               scale: window.devicePixelRatio || 1,
               useCORS: true,
               allowTaint: false,
               backgroundColor: '#ffffff',
               logging: false,
-              foreignObjectRendering: true,
-              scrollX: -window.scrollX,
-              scrollY: -window.scrollY,
-              windowWidth: document.documentElement.scrollWidth,
-              windowHeight: document.documentElement.scrollHeight,
               onclone: (clonedDoc) => {
                 // ボタン類を非表示にするがレイアウトは保持（visibilityでスペース維持）
                 clonedDoc.querySelectorAll('.print-hidden').forEach(el => {
@@ -367,6 +365,7 @@
                 });
               }
             });
+            window.scrollTo(prevScrollX, prevScrollY);
             const link = document.createElement('a');
             link.download = `受注兼発送依頼書_${header.orderNo}_${getTodayString().replace(/\//g, '')}.png`;
             link.href = canvas.toDataURL('image/png');
