@@ -399,7 +399,9 @@
             };
             const closingDay = parseClosingDay(closingStr);
             if (closingDay === null) return;
-            const shipDate = new Date(String(header.shipDate1).replace(/\//g, '-'));
+            const sdm = String(header.shipDate1).match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+            if (!sdm) return;
+            const shipDate = new Date(+sdm[1], +sdm[2] - 1, +sdm[3]);
             if (isNaN(shipDate.getTime())) return;
             const shipDay = shipDate.getDate();
             const isLastDay = closingDay === 'last';

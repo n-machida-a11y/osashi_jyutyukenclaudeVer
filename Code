@@ -713,7 +713,9 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     const isLast = s === '末日';
     const day = isLast ? null : parseInt(s);
     if (!isLast && (isNaN(day) || day < 1 || day > 31)) return null;
-    const sd = new Date(String(_ship1).replace(/\//g, '-'));
+    const sdm = String(_ship1).match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (!sdm) return null;
+    const sd = new Date(+sdm[1], +sdm[2] - 1, +sdm[3]);
     if (isNaN(sd.getTime())) return null;
     const lastOf = (y, m) => new Date(y, m + 1, 0).getDate();
     const actual = (y, m) => isLast ? lastOf(y, m) : Math.min(day, lastOf(y, m));
