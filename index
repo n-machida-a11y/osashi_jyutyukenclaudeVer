@@ -467,7 +467,6 @@
             chk(!header.paymentDate, 'paymentDate', '支払日');
             chk(!header.paymentConditionDetail, 'paymentConditionDetail', '支払条件詳細');
             // モード依存
-            chk(mode === 'sales' && !header.headerSlipNo, 'headerSlipNo', '伝票No');
             chk(mode === 'rental' && !header.rentalId, 'rentalId', 'レンタルID');
             chk(mode === 'rental' && !header.siteName, 'siteName', '現場名');
             // 明細
