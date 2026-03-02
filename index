@@ -9,7 +9,7 @@
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dom-to-image/2.6.0/dom-to-image.min.js"></script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@700&display=swap');
       body { font-family: 'Noto Sans JP', sans-serif; background-color: #f3f4f6; }
@@ -347,37 +347,21 @@
         const showAlert = (message) => setAlertState({ isOpen: true, message });
         const formRef = useRef(null);
         const handleSaveImage = async () => {
-          if (!formRef.current || typeof html2canvas === 'undefined') { showAlert('画像保存機能が利用できません。'); return; }
+          if (!formRef.current || typeof domtoimage === 'undefined') { showAlert('画像保存機能が利用できません。'); return; }
           try {
             const prevScrollX = window.scrollX;
             const prevScrollY = window.scrollY;
             window.scrollTo(0, 0);
             await document.fonts.ready;
             const el = formRef.current;
-            const canvas = await html2canvas(el, {
-              scale: 2,
-              useCORS: true,
-              allowTaint: false,
-              backgroundColor: '#ffffff',
-              logging: false,
-              foreignObjectRendering: true,
-              x: 0,
-              y: 0,
-              width: el.scrollWidth,
-              height: el.scrollHeight,
-              windowWidth: document.documentElement.scrollWidth,
-              windowHeight: document.documentElement.scrollHeight,
-              onclone: (clonedDoc) => {
-                // ボタン類を非表示にするがレイアウトは保持（visibilityでスペース維持）
-                clonedDoc.querySelectorAll('.print-hidden').forEach(el => {
-                  el.style.visibility = 'hidden';
-                });
-              }
-            });
+            const hiddenEls = Array.from(el.querySelectorAll('.print-hidden'));
+            hiddenEls.forEach(e => e.style.visibility = 'hidden');
+            const dataUrl = await domtoimage.toPng(el, { bgcolor: '#ffffff' });
+            hiddenEls.forEach(e => e.style.visibility = '');
             window.scrollTo(prevScrollX, prevScrollY);
             const link = document.createElement('a');
             link.download = `受注兼発送依頼書_${header.orderNo}_${getTodayString().replace(/\//g, '')}.png`;
-            link.href = canvas.toDataURL('image/png');
+            link.href = dataUrl;
             link.click();
           } catch(e) { showAlert('画像保存に失敗しました: ' + e.message); }
         };
