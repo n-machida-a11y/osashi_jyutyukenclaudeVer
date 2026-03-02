@@ -704,8 +704,8 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
 
   // 締め日・支払日をGAS側で事前計算（列が空 かつ 出荷日があれば計算済み値を返す）
   const _daySetting = getVal('請求締日') || (custInfo.closingDate) || '';
-  const _storedClose = getVal('締め日');
-  const _storedPay   = getVal('支払日');
+  const _storedClose = row['締め日'] ? formatDate(row['締め日']) : '';
+  const _storedPay   = row['支払日'] ? formatDate(row['支払日']) : '';
   const _ship1 = ships.shipDate1 || '';
   const _preCalc = (() => {
     if (!_daySetting || !_ship1) return null;
