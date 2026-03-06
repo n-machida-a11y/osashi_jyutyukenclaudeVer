@@ -470,8 +470,8 @@
             // 明細
             const hasItems = items.some(i => i.productName && !String(i.id || '').startsWith('pad-'));
             chk(!hasItems, 'items', '明細（1行以上入力）');
-            // 技術課依頼
-            chk(techReqEnabled && !header.internalMemo, 'internalMemo', '技術課依頼内容');
+            // 技術課依頼 / 整備依頼
+            chk(mode !== 'rental' && techReqEnabled && !header.internalMemo, 'internalMemo', '技術課依頼内容');
             setErrors(newErrors);
             return { valid: missing.length === 0, missing };
         };
@@ -521,7 +521,7 @@
         
         const updateItem = (idx, key, val) => { 
             const row = items[idx]; 
-            if (String(row.id).includes('-') ? (isProcessing && !isAdmin) : isLocked) return; 
+            if (String(row.id).includes('-') ? (isProcessing && !isAdmin && !isSalesAdmin) : isLocked) return;
             const newItems = [...items]; 
             newItems[idx] = { ...newItems[idx], [key]: val }; 
             
@@ -566,6 +566,7 @@
         }
 
         const toggleDoubleCheck = (idx, checkNum) => {
+            if (isLocked) return;
             const newItems = [...items];
             const parts = (newItems[idx].doubleCheck || '|').split('|');
             if (parts.length < 2) parts.push('');
@@ -602,7 +603,7 @@
           setConfirmState({ isOpen: true, message: `「${approverName}」として承認してよろしいですか？`, onConfirm: () => { setConfirmState({ isOpen: false }); if (typeof google !== 'undefined' && google.script) google.script.run.withSuccessHandler((res) => { if(res.success) onChange({ ...data, header: { ...header, [`approval${stampType}`]: { status: '済', name: approverName, date: getTodayString() } } }); }).approveOrder(header.orderNo, stampType, approverName); }, onCancel: () => setConfirmState({ isOpen: false }) });
         }
         const handleRowShipConfirm = (n) => {
-          if (header[`shipConfirmName${n}`]) return;
+          if (isCompleted || header[`shipConfirmName${n}`]) return;
           setConfirmState({
             isOpen: true,
             message: `${n}行目の出荷指示を「${CONFIG.userName}」として確認しますか？`,
@@ -614,7 +615,7 @@
           });
         };
         const handleRowShipConfirm2 = (n) => {
-          if (header[`shipConfirm2Name${n}`]) return;
+          if (isCompleted || header[`shipConfirm2Name${n}`]) return;
           setConfirmState({
             isOpen: true,
             message: `${n}行目の出荷指示（2回目）を「${CONFIG.userName}」として確認しますか？`,
@@ -763,16 +764,13 @@
                         {!(isSalesAdmin && isSubmitted) && !isProcessing && <button onClick={handleSubmit} className="px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 shadow font-medium text-sm ml-2 flex items-center"><Send className="w-4 h-4 mr-2" /> 提出</button>}
                     </>
                   )}
-                  {isProcessing && isSalesAdmin && (
-                      <button onClick={() => setConfirmState({ isOpen: true, message: '一時保存してもよろしいですか？', onConfirm: () => { onSave('temporary'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 shadow font-medium text-sm flex items-center"><Save className="w-4 h-4 mr-2" /> 一時保存</button>
-                  )}
 
                   {isSubmitted && !isAdmin && !isSalesAdmin && (
                       <button onClick={() => setConfirmState({ isOpen: true, message: '再編集しますか？ステータスが「作成中」に戻ります。', onConfirm: () => { onSave('reedit'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 shadow font-medium text-sm flex items-center"><Edit2 className="w-4 h-4 mr-2" /> 再編集</button>
                   )}
 
                   {isSalesAdmin && isSubmitted && !isProcessing && !isCompleted && (
-                      <button onClick={() => setConfirmState({ isOpen: true, message: 'ステータスを「処理中」に変更しますか？以降は編集がロックされます。', onConfirm: () => { onSave('process'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700 shadow font-medium text-sm ml-2 flex items-center"><Play className="w-4 h-4 mr-2" /> 処理開始</button>
+                      <button onClick={() => setConfirmState({ isOpen: true, message: 'ステータスを「処理中」に変更しますか？一般営業はロックされます（営業事務は引き続き編集可能）。', onConfirm: () => { onSave('process'); setConfirmState({ isOpen: false }); }, onCancel: () => setConfirmState({ isOpen: false }) })} className="px-6 py-2 bg-red-600 text-white rounded hover:bg-red-700 shadow font-medium text-sm ml-2 flex items-center"><Play className="w-4 h-4 mr-2" /> 処理開始</button>
                   )}
 
                   {isSalesAdmin && isProcessing && (
@@ -822,7 +820,7 @@
                           {mode === 'rental' && (
                               <>
                                   <div className="flex items-center"><span className="font-bold mr-2 text-sm">レンタルID</span><input type="text" value={header.rentalId || ''} onChange={e => updateHeader('rentalId', e.target.value)} disabled={isLocked} className={`font-mono border-b border-gray-300 w-32 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.rentalId ? 'input-error' : ''}`} placeholder="12桁数字" /></div>
-                                  <div className="flex items-center"><span className="font-bold mr-2 text-sm">現場名</span><input type="text" value={header.siteName || ''} onChange={e => updateHeader('siteName', e.target.value)} disabled={isLocked} className={`border-b border-gray-300 w-64 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.siteName ? 'input-error' : ''}`} /></div>
+                                  <div className="flex items-center"><span className="font-bold mr-2 text-sm">現場名</span><input type="text" value={header.siteName || ''} onChange={e => updateHeader('siteName', e.target.value)} disabled={isLocked} className={`border-b border-gray-300 w-64 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} /></div>
                               </>
                           )}
                       </div>
@@ -859,7 +857,7 @@
                         <div className="w-1/3 mb-1 flex items-center gap-1">
                              <span className="text-xs font-bold whitespace-nowrap">担当者:</span>
                              <input className={`flex-1 outline-none border-b border-gray-300 bg-transparent text-sm ${isLocked ? 'input-locked' : ''}`} value={header.salesRepClient || ''} onChange={e => updateHeader('salesRepClient', e.target.value)} disabled={isLocked} placeholder="(任意)" />
-                             <span className="text-sm font-bold whitespace-nowrap">様</span>
+                             {!String(header.salesRepClient || '').endsWith('様') && <span className="text-sm font-bold whitespace-nowrap">様</span>}
                         </div>
                       </div>
                       
@@ -885,7 +883,7 @@
                            </div>
                            <div className="flex items-center gap-1 w-1/2">
                              <input className={`font-bold border-b text-sm flex-1 focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.shipRep || ''} onChange={e => updateHeader('shipRep', e.target.value)} disabled={isLocked} placeholder="直送先担当者名(任意)" />
-                             <span className="text-sm font-bold whitespace-nowrap">様</span>
+                             {!String(header.shipRep || '').endsWith('様') && <span className="text-sm font-bold whitespace-nowrap">様</span>}
                            </div>
                        </div>
                        <div className="px-2"><div className="flex gap-6 mb-2"><input className={`font-bold text-base border-b border-dashed flex-1 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''} ${errors.shipName ? 'input-error' : ''}`} value={header.shipName || ''} onChange={e => updateHeader('shipName', e.target.value)} disabled={isLocked} placeholder="(直送先名)" /><input className={`font-bold text-sm border-b border-dashed w-1/3 bg-transparent focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={header.shipName2 || ''} onChange={e => updateHeader('shipName2', e.target.value)} disabled={isLocked} placeholder="(名２)" /></div><div className="flex flex-col gap-1 mt-1"><div className="flex items-center gap-1"><span className="text-xs font-bold">〒</span><input className={`w-24 bg-transparent border-b border-gray-300 outline-none text-sm font-mono ${isLocked ? 'input-locked' : ''}`} value={header.shipZipCode || ''} onChange={e => updateHeader('shipZipCode', e.target.value)} disabled={isLocked} placeholder="000-0000" /></div><input className={`w-full bg-transparent border-b border-gray-300 outline-none text-sm ${isLocked ? 'input-locked' : ''} ${errors.shipAddress ? 'input-error' : ''}`} value={header.shipAddress || ''} onChange={e => updateHeader('shipAddress', e.target.value)} disabled={isLocked} placeholder="住所１" /><input className={`w-full bg-transparent border-b border-gray-300 outline-none text-sm ${isLocked ? 'input-locked' : ''}`} value={header.shipAddress2 || ''} onChange={e => updateHeader('shipAddress2', e.target.value)} disabled={isLocked} placeholder="住所２" /><div className="flex items-center text-xs"><span className="font-bold mr-1">TEL:</span><input className={`bg-transparent border-b border-gray-300 outline-none flex-1 ${isLocked ? 'input-locked' : ''} ${errors.shipTel ? 'input-error' : ''}`} value={header.shipTel || ''} onChange={e => updateHeader('shipTel', e.target.value)} disabled={isLocked} placeholder="00-0000-0000" /></div></div></div>
