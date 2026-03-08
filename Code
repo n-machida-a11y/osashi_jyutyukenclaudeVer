@@ -601,7 +601,7 @@ function toFullWidth(str) {
 
 function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) {
   if (!row) return {};
-  const getVal = (k) => (row[k] !== undefined ? String(row[k]) : "");
+  const getVal = (k) => (row[k] !== undefined ? String(row[k]).trim() : "");
   const code = getVal('得意先コード');
   const getStamp = (col, label) => {
     const val = getVal(col);

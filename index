@@ -348,16 +348,18 @@
         const formRef = useRef(null);
         const handleSaveImage = async () => {
           if (!formRef.current || typeof domtoimage === 'undefined') { showAlert('画像保存機能が利用できません。'); return; }
+          const prevScrollX = window.scrollX;
+          const prevScrollY = window.scrollY;
+          let dataUrl = null;
+          let replacedSelects = [];
+          let hiddenEls = [];
           try {
-            const prevScrollX = window.scrollX;
-            const prevScrollY = window.scrollY;
             window.scrollTo(0, 0);
             await document.fonts.ready;
             const el = formRef.current;
-            const hiddenEls = Array.from(el.querySelectorAll('.print-hidden'));
+            hiddenEls = Array.from(el.querySelectorAll('.print-hidden'));
             hiddenEls.forEach(e => e.style.visibility = 'hidden');
             // dom-to-imageはselectの選択値を正しく描画できないため、一時的にspanに置き換える
-            const replacedSelects = [];
             el.querySelectorAll('select').forEach(sel => {
               const selectedText = sel.options[sel.selectedIndex]?.text || '';
               const span = document.createElement('span');
@@ -367,15 +369,21 @@
               sel.style.display = 'none';
               replacedSelects.push({ sel, span });
             });
-            const dataUrl = await domtoimage.toPng(el, { bgcolor: '#ffffff' });
+            dataUrl = await domtoimage.toPng(el, { bgcolor: '#ffffff' });
+          } catch(e) {
+            showAlert('画像保存に失敗しました: ' + e.message);
+          } finally {
+            // 例外発生時も必ずselectを元に戻す
             replacedSelects.forEach(({ sel, span }) => { span.remove(); sel.style.display = ''; });
             hiddenEls.forEach(e => e.style.visibility = '');
             window.scrollTo(prevScrollX, prevScrollY);
+          }
+          if (dataUrl) {
             const link = document.createElement('a');
             link.download = `受注兼発送依頼書_${header.orderNo}_${getTodayString().replace(/\//g, '')}.png`;
             link.href = dataUrl;
             link.click();
-          } catch(e) { showAlert('画像保存に失敗しました: ' + e.message); }
+          }
         };
 
         // 技術課依頼書のUI状態管理
@@ -866,9 +874,9 @@
                              <input className={`font-bold text-sm w-full outline-none bg-transparent mt-1 ${isLocked ? 'input-locked' : ''}`} value={header.branchName || ''} onChange={e => updateHeader('branchName', e.target.value)} disabled={isLocked} placeholder="(支店名)" />
                         </div>
                         {/* 担当者を社名の右横（同じ行の右側）に配置 */}
-                        <div className="w-1/3 mb-1 flex items-center gap-1">
+                        <div className="mb-1 flex items-center gap-1 shrink-0">
                              <span className="text-xs font-bold whitespace-nowrap">担当者:</span>
-                             <input className={`flex-1 outline-none border-b border-gray-300 bg-transparent text-sm ${isLocked ? 'input-locked' : ''}`} value={String(header.salesRepClient || '').replace(/様$/, '')} onChange={e => updateHeader('salesRepClient', e.target.value)} disabled={isLocked} placeholder="(任意)" />
+                             <input className={`w-24 outline-none border-b border-gray-300 bg-transparent text-sm ${isLocked ? 'input-locked' : ''}`} value={String(header.salesRepClient || '').replace(/様$/, '')} onChange={e => updateHeader('salesRepClient', e.target.value.replace(/様$/, ''))} disabled={isLocked} placeholder="(任意)" />
                              <span className="text-sm font-bold whitespace-nowrap">様</span>
                         </div>
                       </div>
@@ -894,7 +902,7 @@
                                <input className={`text-xs font-mono text-gray-500 bg-transparent outline-none border-b border-transparent hover:border-gray-300 focus:border-gray-400 w-20 ${isLocked ? 'input-locked' : ''}`} value={header.shipCode || ''} onChange={e => updateHeader('shipCode', e.target.value)} disabled={isLocked} placeholder="直送先コード" />
                            </div>
                            <div className="flex items-center gap-1 w-1/2">
-                             <input className={`font-bold border-b text-sm flex-1 focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={String(header.shipRep || '').replace(/様$/, '')} onChange={e => updateHeader('shipRep', e.target.value)} disabled={isLocked} placeholder="直送先担当者名(任意)" />
+                             <input className={`font-bold border-b text-sm flex-1 focus:outline-none ${isLocked ? 'input-locked' : ''}`} value={String(header.shipRep || '').replace(/様$/, '')} onChange={e => updateHeader('shipRep', e.target.value.replace(/様$/, ''))} disabled={isLocked} placeholder="直送先担当者名(任意)" />
                              <span className="text-sm font-bold whitespace-nowrap">様</span>
                            </div>
                        </div>
@@ -1011,8 +1019,8 @@
                         <div className="border-r border-black p-1 flex items-center">
                             <NumberInput className="w-full bg-transparent outline-none font-mono" value={row.unitPrice || ''} onChange={v => updateItem(i, 'unitPrice', v)} readOnly={isLocked} isMasked={isTemporary} />
                         </div>
-                        <div className="border-r border-black p-1 px-2 text-right font-mono font-bold flex items-center justify-end">
-                            {isTemporary ? '0' : (row.amount ? Number(row.amount).toLocaleString() : '')}
+                        <div className="border-r border-black p-1 flex items-center">
+                            <NumberInput className="w-full bg-transparent outline-none font-mono font-bold" value={row.amount || ''} onChange={v => updateItem(i, 'amount', v)} readOnly={isLocked} isMasked={isTemporary} />
                         </div>
                         <div className="border-r border-black p-1 flex items-center">
                             <input className="w-full text-center bg-transparent outline-none text-xs" value={row.manufacturingNo || ''} onChange={e => updateItem(i, 'manufacturingNo', e.target.value)} readOnly={isLocked} />
@@ -1038,8 +1046,8 @@
                     </div>
                   ))}
 
-                  {true && (
-                    <div className={`grid ${gridColsClass} border-b border-black text-sm min-h-[36px] items-center bg-gray-50`}>
+                  {/* 全モード共通: 仕入れ品原価・売上小計・原価合計行 */}
+                  <div className={`grid ${gridColsClass} border-b border-black text-sm min-h-[36px] items-center bg-gray-50`}>
                        <div></div> {/* 操作 */}
                        <div className="border-l border-black border-r"></div> {/* 日付 */}
                        <div className="border-r border-black p-1 flex items-center gap-2"> {/* 品名: 仕入れ品原価 */}
@@ -1064,7 +1072,6 @@
                        <div className="border-r border-black"></div> {/* 掛率 */}
                        <div></div> {/* ダブルチェック */}
                     </div>
-                  )}
 
                   {[...Array(Math.max(0, 5 - items.length))].map((_, i) => <div key={`empty-${i}`} className={`grid ${gridColsClass} border-b border-black last:border-none text-sm min-h-[32px]`}><div/><div className="border-l border-black border-r"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black font-mono"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div className="border-r border-black"/><div/></div>)}
                   
