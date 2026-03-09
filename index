@@ -480,7 +480,7 @@
             chk(!header.shipAddress, 'shipAddress', '直送先住所');
             chk(!header.shipTel, 'shipTel', '直送先TEL');
             // 出荷・配送
-            chk(!header.deliveryMethod1, 'deliveryMethod1', '配送方法(1行目)');
+            chk(!!header.shipDate1 && !header.deliveryMethod1, 'deliveryMethod1', '配送方法(1行目)');
             // 集金条件
             chk(!header.closingDate, 'closingDate', '締め日');
             chk(!header.paymentDate, 'paymentDate', '支払日');
