@@ -35,6 +35,7 @@ function doGet(e) {
   template.userRole = (staffInfo.role === "管理者" || staffInfo.role === "admin") ? "admin" : "sales";
   template.userTitle = staffInfo.title || "";
   template.userName = staffInfo.name || paramUserName || "担当者";
+  template.userFullName = staffInfo.fullName || staffInfo.name || paramUserName || "担当者";
   template.enableEmailSend = ENABLE_EMAIL_SEND ? "true" : "false";
 
   return template.evaluate()
@@ -44,7 +45,7 @@ function doGet(e) {
 }
 
 function getStaffInfo(staffCode) {
-  if (!staffCode) return { role: "", title: "", name: "" };
+  if (!staffCode) return { role: "", title: "", name: "", fullName: "" };
 
   // キャッシュから取得（担当者マスタはめったに変わらないため10分保持）
   const cache = CacheService.getScriptCache();
@@ -57,13 +58,14 @@ function getStaffInfo(staffCode) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.STAFF);
-    if (!sheet) return { role: "", title: "", name: "" };
+    if (!sheet) return { role: "", title: "", name: "", fullName: "" };
     const data = sheet.getDataRange().getValues();
     const headers = data[0].map(h => String(h).trim());
     const codeIdx = headers.indexOf("担当者コード");
     const nameIdx = headers.indexOf("担当者名");
     const roleIdx = headers.indexOf("権限");
     const titleIdx = headers.indexOf("役職");
+    const fullNameIdx = headers.indexOf("氏名");
 
     const targetCode = cleanId(staffCode);
     for (let i = 1; i < data.length; i++) {
@@ -71,14 +73,15 @@ function getStaffInfo(staffCode) {
         const result = {
           role: roleIdx !== -1 ? String(data[i][roleIdx]).trim() : "",
           title: titleIdx !== -1 ? String(data[i][titleIdx]).trim() : "",
-          name: nameIdx !== -1 ? String(data[i][nameIdx]).trim() : ""
+          name: nameIdx !== -1 ? String(data[i][nameIdx]).trim() : "",
+          fullName: fullNameIdx !== -1 ? String(data[i][fullNameIdx]).trim() : ""
         };
         cache.put(cacheKey, JSON.stringify(result), 600); // 10分キャッシュ
         return result;
       }
     }
   } catch (e) {}
-  return { role: "", title: "", name: "" };
+  return { role: "", title: "", name: "", fullName: "" };
 }
 
 // 商品マスタ検索API
