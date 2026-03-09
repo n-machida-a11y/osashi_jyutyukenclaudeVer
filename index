@@ -535,7 +535,34 @@
         const updateData = (updates) => { if (!isLocked) onChange({ ...data, ...updates }); };
         const updateHeader = (key, val) => {
             if (errors[key]) setErrors({...errors, [key]: false});
-            updateData({ header: { ...header, [key]: val } });
+            let newHeader = { ...header, [key]: val };
+            // 出荷日1変更時に締め日・支払日を同期的に計算（useEffectに依存しない）
+            if (key === 'shipDate1' && val && !isLocked) {
+                const closingStr = String(newHeader.closingDaySetting || '').trim();
+                if (closingStr) {
+                    const parseDay = (s) => { if (s === '末日') return 'last'; const j = s.match(/^(\d+)日$/); if (j) return parseInt(j[1]); const d = s.match(/\d{4}[\/\-]\d{1,2}[\/\-](\d{1,2})/); if (d) return parseInt(d[1]); const n = parseInt(s); return (!isNaN(n) && n >= 1 && n <= 31) ? n : null; };
+                    const closingDay = parseDay(closingStr);
+                    const pts = String(val).split(/[\/\-]/);
+                    if (closingDay !== null && pts.length >= 3 && pts[0].length === 4) {
+                        const [sy, sm, sd] = pts.map(Number);
+                        if (sy && sm && sd) {
+                            const ship = new Date(sy, sm - 1, sd);
+                            if (!isNaN(ship.getTime())) {
+                                const isLast = closingDay === 'last';
+                                const lastOf = (y, m) => new Date(y, m + 1, 0).getDate();
+                                const actual = (y, m) => isLast ? lastOf(y, m) : Math.min(closingDay, lastOf(y, m));
+                                const fmt = (y, m, d) => `${y}/${String(m+1).padStart(2,'0')}/${String(d).padStart(2,'0')}`;
+                                let cy = ship.getFullYear(), cm = ship.getMonth();
+                                if (ship.getDate() > actual(cy, cm)) { const nd = new Date(cy, cm + 1, 1); cy = nd.getFullYear(); cm = nd.getMonth(); }
+                                const pd = new Date(cy, cm + 1, 1);
+                                newHeader.closingDate = fmt(cy, cm, actual(cy, cm));
+                                newHeader.paymentDate = fmt(pd.getFullYear(), pd.getMonth(), actual(pd.getFullYear(), pd.getMonth()));
+                            }
+                        }
+                    }
+                }
+            }
+            updateData({ header: newHeader });
         };
         const updatePaymentType = (val) => updateHeader('paymentConditionType', val);
         const updatePaymentDetail = (val) => updateHeader('paymentConditionDetail', val);
