@@ -795,8 +795,8 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     dataStatus: getVal('データステータス') || '作成中', 
     rentalId: getVal('レンタルID'), 
     siteName: getVal('現場名'), 
-    periodStartDate: getVal('期間開始'), 
-    periodEndDate: getVal('期間終了'), 
+    periodStartDate: formatDate(getVal('レンタル開始日')),
+    periodEndDate: formatDate(getVal('レンタル終了日')),
     
     shipmentInstructionConfirm: {
       status: getVal('出荷指示確認者') ? '済' : '',
@@ -845,8 +845,8 @@ function reverseMapHeader(h) {
     '直送先担当者名': h.shipRep, 
     'レンタルID': h.rentalId, 
     '現場名': h.siteName, 
-    '期間開始': h.periodStartDate, 
-    '期間終了': h.periodEndDate, 
+    'レンタル開始日': h.periodStartDate,
+    'レンタル終了日': h.periodEndDate,
     '得意先備考': h.customerNote, 
     '売上日': h.salesDate, 
     '伝票No': h.headerSlipNo,
@@ -1127,3 +1127,4 @@ function warmUp() {
     SpreadsheetApp.openById(SPREADSHEET_ID).getName();
   } catch (e) {}
 }
+
