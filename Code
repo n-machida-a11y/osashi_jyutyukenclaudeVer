@@ -35,7 +35,6 @@ function doGet(e) {
   template.userRole = (staffInfo.role === "管理者" || staffInfo.role === "admin") ? "admin" : "sales";
   template.userTitle = staffInfo.title || "";
   template.userName = staffInfo.name || paramUserName || "担当者";
-  template.userFullName = staffInfo.fullName || staffInfo.name || paramUserName || "担当者";
   template.enableEmailSend = ENABLE_EMAIL_SEND ? "true" : "false";
 
   return template.evaluate()
@@ -45,7 +44,7 @@ function doGet(e) {
 }
 
 function getStaffInfo(staffCode) {
-  if (!staffCode) return { role: "", title: "", name: "", fullName: "" };
+  if (!staffCode) return { role: "", title: "", name: "" };
 
   // キャッシュから取得（担当者マスタはめったに変わらないため10分保持）
   const cache = CacheService.getScriptCache();
@@ -58,14 +57,13 @@ function getStaffInfo(staffCode) {
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = ss.getSheetByName(SHEETS.STAFF);
-    if (!sheet) return { role: "", title: "", name: "", fullName: "" };
+    if (!sheet) return { role: "", title: "", name: "" };
     const data = sheet.getDataRange().getValues();
     const headers = data[0].map(h => String(h).trim());
     const codeIdx = headers.indexOf("担当者コード");
     const nameIdx = headers.indexOf("担当者名");
     const roleIdx = headers.indexOf("権限");
     const titleIdx = headers.indexOf("役職");
-    const fullNameIdx = headers.indexOf("氏名");
 
     const targetCode = cleanId(staffCode);
     for (let i = 1; i < data.length; i++) {
@@ -73,15 +71,14 @@ function getStaffInfo(staffCode) {
         const result = {
           role: roleIdx !== -1 ? String(data[i][roleIdx]).trim() : "",
           title: titleIdx !== -1 ? String(data[i][titleIdx]).trim() : "",
-          name: nameIdx !== -1 ? String(data[i][nameIdx]).trim() : "",
-          fullName: fullNameIdx !== -1 ? String(data[i][fullNameIdx]).trim() : ""
+          name: nameIdx !== -1 ? String(data[i][nameIdx]).trim() : ""
         };
         cache.put(cacheKey, JSON.stringify(result), 600); // 10分キャッシュ
         return result;
       }
     }
   } catch (e) {}
-  return { role: "", title: "", name: "", fullName: "" };
+  return { role: "", title: "", name: "" };
 }
 
 // 商品マスタ検索API
@@ -326,7 +323,7 @@ function getOrderData(orderNo, summaryCode) {
       }
     } catch(e) {}
 
-    const result = { success: true, mode: mode, summaryCode: sheetSummaryCode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost }, shipmentHistory: shipmentHistoryList, integratedShipData: integratedShipData };
+    const result = { success: true, mode: mode, header: headerData, items: itemsData, schedule: scheduleData, remarks: remarksData, totals: { subtotal: subtotal, tax: tax, total: subtotal + tax, totalCost: totalCost }, shipmentHistory: shipmentHistoryList, integratedShipData: integratedShipData };
     try { cache.put(cacheKey, JSON.stringify(result), 10); } catch(e) {}
     return result;
   } catch (e) { return createMockData(orderNo, mode, [], "エラー: " + e.message); }
@@ -470,14 +467,12 @@ function saveOrderData(saveData) {
     const validItems = saveData.items.filter(i => i.id && !String(i.id).startsWith('pad-'));
     _batchSaveRows(ss, SHEETS.ITEMS, '受注明細No', '受注No', '数量', orderNo, validItems, item => ({
       '受注No': orderNo, '受注明細No': item.id, '商品名': item.productName,
-      '商品コード': item.productCode || '',
       '数量': item.quantity, '単位': item.unit, '単価': item.unitPrice,
       '受注金額': item.amount, '原価金額': item.costAmount,
       '品名・製造№等': item.note, '種別': saveData.mode,
       '取引年月日': item.transactionDate, '原価単価': item.costPrice,
       '掛率': item.costRate, '製造依頼№': item.manufacturingNo,
-      '手配日': item.arrangementDate,
-      'ダブルチェック': item.doubleCheck || ''
+      '手配日': item.arrangementDate
     }));
 
     // スケジュールバッチ保存
@@ -604,7 +599,7 @@ function toFullWidth(str) {
 
 function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) {
   if (!row) return {};
-  const getVal = (k) => (row[k] !== undefined ? String(row[k]).trim() : "");
+  const getVal = (k) => (row[k] !== undefined ? String(row[k]) : "");
   const code = getVal('得意先コード');
   const getStamp = (col, label) => {
     const val = getVal(col);
@@ -731,8 +726,14 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     if (sday <= actual(sy, sm)) { cy = sy; cm = sm; }
     else { const d = new Date(sy, sm + 1, 1); cy = d.getFullYear(); cm = d.getMonth(); }
     const fmt = (y, m, d) => y + '/' + String(m + 1).padStart(2, '0') + '/' + String(d).padStart(2, '0');
-    const pd = new Date(cy, cm + 1, 1);
-    return { close: fmt(cy, cm, actual(cy, cm)), pay: fmt(pd.getFullYear(), pd.getMonth(), actual(pd.getFullYear(), pd.getMonth())) };
+    const collCode = String(custInfo.collectionCode || '');
+    const payMonthOffset = collCode.length >= 1 ? (parseInt(collCode.substring(0, 1)) || 1) : 1;
+    const payDayStr = collCode.length >= 3 ? collCode.substring(1) : '';
+    const isPayLast = payDayStr === '99' || payDayStr === '31';
+    const payDay = isPayLast ? null : (parseInt(payDayStr) || day);
+    const actualPay = (y, m) => isPayLast ? lastOf(y, m) : Math.min(payDay, lastOf(y, m));
+    const pd = new Date(cy, cm + payMonthOffset, 1);
+    return { close: fmt(cy, cm, actual(cy, cm)), pay: fmt(pd.getFullYear(), pd.getMonth(), actualPay(pd.getFullYear(), pd.getMonth())) };
   })();
 
   return { 
@@ -754,7 +755,6 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
       return {
         customerZipCode: ov.zipCode !== undefined ? ov.zipCode : (m.zipCode || ""),
         customerAddress: ov.address !== undefined ? ov.address : ((m.address1 || "") + (m.address2 || "")),
-        customerAddress2: ov.address2 !== undefined ? ov.address2 : "",
         customerTel:     ov.tel     !== undefined ? ov.tel     : (m.tel  || ""),
         customerFax:     ov.fax     !== undefined ? ov.fax     : (m.fax  || ""),
       };
@@ -815,16 +815,6 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     totalCost: row['原価合計'] || '',
     paymentConditionType: getVal('支払条件種別') || '従来通り',
     paymentConditionDetail: getVal('支払条件詳細'),
-    statusFlags: (() => {
-      const raw = getVal('状況フラグ');
-      if (raw) return raw.split(',').map(s => s.trim()).filter(Boolean);
-      // 後方互換: dataStatusが仮/差替の場合はstatusFlagsに移行
-      const flags = [];
-      const ds = getVal('データステータス');
-      if (ds === '仮') flags.push('仮');
-      if (ds === '差替') flags.push('差替');
-      return flags;
-    })(),
     ...ships
   };
 }
@@ -842,13 +832,12 @@ function reverseMapHeader(h) {
     '締め日': h.closingDate, // 計算済み全日付を新列に保存（請求締日は触らない）
     '支払日': h.paymentDate, 
     '回収種別１': h.collectionMethod,
-    '得意先住所(JSON)': JSON.stringify({ zipCode: h.customerZipCode || '', address: h.customerAddress || '', address2: h.customerAddress2 || '', tel: h.customerTel || '', fax: h.customerFax || '' }),
+    '得意先住所(JSON)': JSON.stringify({ zipCode: h.customerZipCode || '', address: h.customerAddress || '', tel: h.customerTel || '', fax: h.customerFax || '' }),
     '郵便番号': h.shipZipCode,
     '住所１': h.shipAddress,
     '住所２': h.shipAddress2,
     '会社TEL': h.shipTel,
     'データステータス': h.dataStatus,
-    '状況フラグ': (h.statusFlags || []).join(','),
     // 個別の '配送方法' 等のカラム書き込みは廃止し、JSONへ統合
     '直送先担当者名': h.shipRep, 
     'レンタルID': h.rentalId, 
@@ -923,16 +912,15 @@ function reverseMapHeader(h) {
 
 function updateOrAddRow(ss, sheetName, keyColName, keyVal, dataObj) { const sheet = ss.getSheetByName(sheetName); if (!sheet) return; const lastCol = sheet.getLastColumn(), headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim()), keyColIndex = headers.indexOf(keyColName), data = sheet.getDataRange().getValues(); let rowIndex = -1; const targetKey = cleanId(keyVal); for (let i = 1; i < data.length; i++) { if (cleanId(data[i][keyColIndex]) === targetKey) { rowIndex = i + 1; break; } } const rowData = headers.map(h => dataObj.hasOwnProperty(h) ? dataObj[h] : null); if (rowIndex > 0) { const currentRow = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0], newRow = rowData.map((val, i) => (val !== null && val !== undefined) ? val : currentRow[i]); sheet.getRange(rowIndex, 1, 1, headers.length).setValues([newRow]); } else { const cleanRow = rowData.map(v => (v === null || v === undefined) ? "" : v); sheet.appendRow(cleanRow); } }
 function updateSheet(ss, sheetName, keyColName, keyVal, dataObj) { updateOrAddRow(ss, sheetName, keyColName, keyVal, dataObj); }
-function mapItemData(row) {
-    return {
-        id: row['受注明細No'],
-        productName: row['商品名'],
-        productCode: String(row['商品コード'] || ''),
-        quantity: row['数量'],
-        unit: row['単位'],
-        unitPrice: row['単価'],
-        amount: row['受注金額'],
-        costAmount: row['原価金額'],
+function mapItemData(row) { 
+    return { 
+        id: row['受注明細No'], 
+        productName: row['商品名'], 
+        quantity: row['数量'], 
+        unit: row['単位'], 
+        unitPrice: row['単価'], 
+        amount: row['受注金額'], 
+        costAmount: row['原価金額'], 
         note: row['品名・製造№等'],
         transactionDate: formatDate(row['取引年月日']),
         // 新設項目の読み込み（列が存在しない場合はundefined/空になる）
@@ -940,9 +928,8 @@ function mapItemData(row) {
         costRate: row['掛率'],
         // 新規項目
         manufacturingNo: row['製造依頼№'],
-        arrangementDate: formatDate(row['手配日']),
-        doubleCheck: row['ダブルチェック'] || ''
-    };
+        arrangementDate: formatDate(row['手配日'])
+    }; 
 }
 function mapScheduleData(row) { return { id: row['請求ID'], count: row['回数'], billingDate: formatDate(row['請求売上日']), amount: row['請求金額'], costReference: row['原価金額'], slipNo: row['伝票No'], closingDate: formatDate(row['締め日']), checkStatus: row['チェック状況'], rowOrderNo: row['行受注No'], note: row['備考'] }; }
 function mapRemarkData(row) { return { id: row['備考No'], category: row['カテゴリ'], content: row['備考'], date: formatDate(row['日時']), status: row['状況'] || '', mailSent: row['メール送付'] || '', additionalCC: row['追加CC'] || '' }; }
