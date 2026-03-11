@@ -795,8 +795,8 @@ function mapHeaderData(row, mode, staffMap, customerNoteMap, customerMasterMap) 
     dataStatus: getVal('データステータス') || '作成中', 
     rentalId: getVal('レンタルID'), 
     siteName: getVal('現場名'), 
-    periodStartDate: formatDate(getVal('レンタル開始日')),
-    periodEndDate: formatDate(getVal('レンタル終了日')),
+    periodStartDate: formatDate(row['レンタル開始日']),
+    periodEndDate: formatDate(row['レンタル終了日']),
     
     shipmentInstructionConfirm: {
       status: getVal('出荷指示確認者') ? '済' : '',
